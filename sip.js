@@ -1286,7 +1286,8 @@ function renderKartuPapanInfo(pgm) {
   html += renderBadgeTargetPapanInfo(pgm.target);
   html += '</div>';
   html += '<div class="papan-info-card-aksi">';
-  html += '<button class="santri-aksi-tombol" onclick="aksiUbahStatusPapanInfo(\'' + escapeHtml(pgm.id) + '\',\'' + escapeHtml(pgm.status || 'draft') + '\')" title="Ubah Status" type="button">' + SVG_ICONS.refresh + '</button>';
+html += '<a class="santri-aksi-tombol" href="#/admin/pengumuman/lihat/' + escapeHtml(pgm.id) + '" title="Lihat">' + SVG_ICONS.eye + '</a>';
+html += '<button class="santri-aksi-tombol" onclick="aksiUbahStatusPapanInfo(\'' + escapeHtml(pgm.id) + '\',\'' + escapeHtml(pgm.status || 'draft') + '\')" title="Ubah Status" type="button">' + SVG_ICONS.refresh + '</button>';
   html += '<a class="santri-aksi-tombol" href="#/admin/pengumuman/edit/' + escapeHtml(pgm.id) + '" title="Edit">' + SVG_ICONS.edit + '</a>';
   html += '<button class="santri-aksi-tombol danger" onclick="konfirmasiHapusPapanInfo(\'' + escapeHtml(pgm.id) + '\',\'' + escapeHtml(pgm.judul || '') + '\')" title="Hapus" type="button">' + SVG_ICONS.trash + '</button>';
   html += '</div>';
@@ -1378,15 +1379,16 @@ function muatPapanInfoDashboard() {
     }
     var html = '';
     res.data.forEach(function (p) {
-      var tgl = p.tanggal_terbit ? formatTanggalIndo(p.tanggal_terbit) : (p.dibuat_pada ? formatTanggalIndo(p.dibuat_pada) : '');
-      var isiRingkas = String(p.isi || '');
-      if (isiRingkas.length > 100) isiRingkas = isiRingkas.substring(0, 100) + '...';
-      html += '<div class="pengumuman-item">';
-      html += '<div class="pengumuman-item-header"><span class="pengumuman-item-kategori">' + escapeHtml(labelKategoriPapanInfo(p.kategori)) + '</span><span class="pengumuman-item-tanggal">' + escapeHtml(tgl) + '</span></div>';
-      html += '<div class="pengumuman-item-judul">' + escapeHtml(p.judul || '') + '</div>';
-      html += '<div class="pengumuman-item-isi">' + escapeHtml(isiRingkas) + '</div>';
-      html += '</div>';
-    });
+  var tgl = p.tanggal_terbit ? formatTanggalIndo(p.tanggal_terbit) : (p.dibuat_pada ? formatTanggalIndo(p.dibuat_pada) : '');
+  var isiRingkas = String(p.isi || '');
+  if (isiRingkas.length > 100) isiRingkas = isiRingkas.substring(0, 100) + '...';
+  html += '<a class="pengumuman-item" href="#/admin/pengumuman/lihat/' + escapeHtml(p.id) + '">';
+  html += '<div class="pengumuman-item-header"><span class="pengumuman-item-kategori">' + escapeHtml(labelKategoriPapanInfo(p.kategori)) + '</span><span class="pengumuman-item-tanggal">' + escapeHtml(tgl) + '</span></div>';
+  html += '<div class="pengumuman-item-judul">' + escapeHtml(p.judul || '') + '</div>';
+  html += '<div class="pengumuman-item-isi">' + escapeHtml(isiRingkas) + '</div>';
+  html += '<div class="pengumuman-item-selengkapnya">Lihat selengkapnya &rarr;</div>';
+  html += '</a>';
+});
     wadah.innerHTML = html;
   });
 }
@@ -1494,6 +1496,54 @@ function renderHalamanEditPapanInfo(wadah, id) {
       wadah.innerHTML = '<div class="admin-placeholder"><div class="admin-placeholder-ikon">' + SVG_ICONS.warning + '</div><h2>Data tidak ditemukan</h2><p>Papan info dengan ID tersebut tidak ada.</p><a class="btn btn-utama mt-4" href="#/admin/pengumuman">Kembali ke Papan Info</a></div>';
     }
   });
+}
+
+function renderHalamanDetailPapanInfo(wadah, id) {
+  if (!pastikanLoginAdmin()) return;
+  wadah.innerHTML = '<div class="loading-box"><div class="spinner"></div><p class="teks-lembut">Memuat papan info...</p></div>';
+  panggilApi('ambilPengumumanBerdasarkanId', { id: id }, 'POST').then(function (res) {
+    if (!res || !res.sukses || !res.data) {
+      wadah.innerHTML = '<div class="admin-placeholder"><div class="admin-placeholder-ikon">' + SVG_ICONS.warning + '</div><h2>Data tidak ditemukan</h2><p>' + escapeHtml((res && res.pesan) || 'Papan info tidak ditemukan.') + '</p><a class="btn btn-utama mt-4" href="#/admin/pengumuman">Kembali ke Papan Info</a></div>';
+      return;
+    }
+    wadah.innerHTML = renderDetailPapanInfoLengkap(res.data);
+  });
+}
+
+function renderDetailPapanInfoLengkap(p) {
+  var tgl = p.tanggal_terbit ? formatTanggalIndo(p.tanggal_terbit) : (p.dibuat_pada ? formatTanggalIndo(p.dibuat_pada) : '-');
+  var tglKadaluarsa = p.tanggal_kadaluarsa ? formatTanggalIndo(p.tanggal_kadaluarsa) : '';
+  var isiHtml = escapeHtml(p.isi || '').replace(/\n/g, '<br>');
+  var lampiranHtml = '';
+  if (p.lampiran_url) {
+    lampiranHtml = '<div class="papan-info-detail-lampiran"><a class="btn btn-outline btn-sm" href="' + escapeHtml(p.lampiran_url) + '" rel="noopener" target="_blank">' + SVG_ICONS.file + '<span>Buka Lampiran</span></a></div>';
+  }
+
+  var html = '' +
+    '<div class="admin-halaman-header">' +
+      '<div class="admin-halaman-judul-wrap">' +
+        '<a class="btn btn-ghost btn-sm" href="#/admin/pengumuman" style="margin-bottom:8px">' + SVG_ICONS.arrowLeft + '<span>Kembali ke Papan Info</span></a>' +
+      '</div>' +
+    '</div>' +
+    '<div class="papan-info-detail">' +
+      '<div class="papan-info-detail-header">' +
+        '<div class="papan-info-badges">' + renderBadgeKategoriPapanInfo(p.kategori) + renderBadgeStatusPapanInfo(p.status) + renderBadgeTargetPapanInfo(p.target) + '</div>' +
+        '<h1 class="papan-info-detail-judul">' + escapeHtml(p.judul || '(tanpa judul)') + '</h1>' +
+        '<div class="papan-info-detail-meta">' +
+          '<span>' + SVG_ICONS.calendar + '<span>Terbit: ' + escapeHtml(tgl) + '</span></span>' +
+          (tglKadaluarsa ? '<span>' + SVG_ICONS.calendar + '<span>Kadaluarsa: ' + escapeHtml(tglKadaluarsa) + '</span></span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="papan-info-detail-isi">' + isiHtml + '</div>' +
+      lampiranHtml +
+      '<div class="papan-info-detail-aksi">' +
+        '<a class="btn btn-utama" href="#/admin/pengumuman/edit/' + escapeHtml(p.id) + '">' + SVG_ICONS.edit + '<span>Edit</span></a>' +
+        '<button class="btn btn-outline" onclick="aksiUbahStatusPapanInfo(\'' + escapeHtml(p.id) + '\',\'' + escapeHtml(p.status || 'draft') + '\')" type="button">' + SVG_ICONS.refresh + '<span>Ubah Status</span></button>' +
+        '<button class="btn btn-outline" onclick="window.print()" type="button">' + SVG_ICONS.printer + '<span>Cetak</span></button>' +
+        '<button class="btn btn-danger" onclick="konfirmasiHapusPapanInfo(\'' + escapeHtml(p.id) + '\',\'' + escapeHtml(p.judul || '') + '\')" type="button">' + SVG_ICONS.trash + '<span>Hapus</span></button>' +
+      '</div>' +
+    '</div>';
+  return html;
 }
 
 function submitFormPapanInfo(e) {
@@ -1753,6 +1803,7 @@ function tanganiRute() {
   else if (hash.indexOf('#/admin/profil-santri/') === 0) { var idProfil = hash.replace('#/admin/profil-santri/', ''); ruteDinamis = { render: function (w) { renderHalamanProfilSantri(w, idProfil); }, judul: 'Profil Santri' }; }
   else if (hash.indexOf('#/admin/pengumuman/tambah') === 0) ruteDinamis = { render: function (w) { renderHalamanTambahPapanInfo(w); }, judul: 'Tambah Papan Info' };
   else if (hash.indexOf('#/admin/pengumuman/edit/') === 0) { var idEditPgm = hash.replace('#/admin/pengumuman/edit/', ''); ruteDinamis = { render: function (w) { renderHalamanEditPapanInfo(w, idEditPgm); }, judul: 'Edit Papan Info' }; }
+    else if (hash.indexOf('#/admin/pengumuman/lihat/') === 0) { var idLihatPgm = hash.replace('#/admin/pengumuman/lihat/', ''); ruteDinamis = { render: function (w) { renderHalamanDetailPapanInfo(w, idLihatPgm); }, judul: 'Detail Papan Info' }; }
   var halaman = ruteDinamis || DAFTAR_HALAMAN[hash];
   var semuaLink = document.querySelectorAll('[data-route]');
   for (var i = 0; i < semuaLink.length; i++) {
