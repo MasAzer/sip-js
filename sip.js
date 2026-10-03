@@ -4,7 +4,7 @@ var KONFIG = {
   LABEL_ARTIKEL: 'Pena Pesantren',
   NAMA_APP: 'ELKAROM',
   SLOGAN: 'Mulia dengan Ilmu',
-  VERSI: '7.2.0',
+  VERSI: '7.3.0',
   STORAGE_TOKEN: 'elkarom_token',
   STORAGE_PENGGUNA: 'elkarom_pengguna',
   STORAGE_TEMA: 'elkarom_tema',
@@ -90,9 +90,11 @@ var STATE = {
   cropDragStartX: 0,
   cropDragStartY: 0,
   cropStartCropX: 0,
-  cropStartCropY: 0
+  cropStartCropY: 0,
+  daftarPapanInfo: [],
+  filterPapanInfo: 'semua',
+  searchPapanInfo: ''
 };
-
 var DATA_STATIS = {
   kerangkaKurikulum: [
     { icon: 'bookOpen', judul: 'Kurikulum Diniyah', deskripsi: 'Mengikuti kurikulum PKPPS (Pendidikan Kesetaraan Pondok Pesantren Salafi) yang berfokus pada kitab-kitab kuning khas pesantren.' },
@@ -123,7 +125,7 @@ var MENU_ADMIN = [
     { label: 'Kelas', route: '#/admin/kelas', icon: 'grid' },
     { label: 'Mata Pelajaran', route: '#/admin/mapel', icon: 'book' },
     { label: 'Kalender Pendidikan', route: '#/admin/kaldik', icon: 'calendar' },
-    { label: 'Buat Pengumuman', route: '#/admin/pengumuman', icon: 'megaphone' },
+    { label: 'Papan Info', route: '#/admin/pengumuman', icon: 'megaphone' },
     { label: 'Berkas', route: '#/admin/berkas', icon: 'file' },
     { label: 'Ekstrakurikuler', route: '#/admin/ekskul', icon: 'star' },
     { label: 'Fasilitas', route: '#/admin/fasilitas', icon: 'grid' }
@@ -895,12 +897,9 @@ function bukaCropModal(dataUrl) {
     STATE.cropImage = img;
     STATE.cropX = 0;
     STATE.cropY = 0;
-    // Hitung skala awal agar foto pas di canvas
-    var areaEl = document.getElementById('crop-area');
     var lebarArea = 360;
     var tinggiArea = 480;
     var skalaAwal = Math.min(lebarArea / img.width, tinggiArea / img.height);
-    // Kalau foto kecil, perbesar sedikit; kalau besar, kecilkan
     if (skalaAwal > 1) skalaAwal = 1;
     STATE.cropSkala = skalaAwal;
 
@@ -1002,7 +1001,6 @@ function gerakDragCropTouch(e) { if (!STATE.cropDragging || e.touches.length !==
 function resetCrop() {
   STATE.cropX = 0;
   STATE.cropY = 0;
-  // Hitung ulang skala awal
   if (STATE.cropImage) {
     var lebarArea = 360;
     var tinggiArea = 480;
@@ -1025,8 +1023,6 @@ function simpanCrop() {
   var frameW = w * 0.75;
   var frameH = frameW / rasioFrame;
   if (frameH > h * 0.9) { frameH = h * 0.9; frameW = frameH * rasioFrame; }
-  var fx = (w - frameW) / 2;
-  var fy = (h - frameH) / 2;
   var OUTPUT_W = 300, OUTPUT_H = 400;
   var canvasOut = document.createElement('canvas');
   canvasOut.width = OUTPUT_W;
@@ -1159,7 +1155,439 @@ function gantiTabProfil(el, idTab) {
   });
 }
 
-/* RENDER PUBLIK */
+/* ============================================================
+ * MODUL PAPAN INFO (PENGUMUMAN)
+ * ============================================================ */
+
+function labelKategoriPapanInfo(kode) {
+  var peta = {
+    'informasi':    'Informasi',
+    'akademik':     'Akademik',
+    'administrasi': 'Administrasi',
+    'prestasi':     'Prestasi',
+    'kegiatan':     'Kegiatan'
+  };
+  return peta[kode] || kode || '';
+}
+
+function labelTargetPapanInfo(kode) {
+  var peta = {
+    'semua':  'Semua',
+    'santri': 'Santri',
+    'guru':   'Guru',
+    'wali':   'Wali'
+  };
+  return peta[kode] || kode || '';
+}
+
+function labelStatusPapanInfo(kode) {
+  var peta = {
+    'draft':  'Draft',
+    'terbit': 'Terbit',
+    'arsip':  'Arsip'
+  };
+  return peta[kode] || kode || '';
+}
+
+function renderBadgeKategoriPapanInfo(kategori) {
+  var label = labelKategoriPapanInfo(kategori);
+  if (!label) return '';
+  return '<span class="papan-info-badge papan-info-badge-kategori papan-info-badge-' + escapeHtml(kategori) + '">' + escapeHtml(label) + '</span>';
+}
+
+function renderBadgeTargetPapanInfo(target) {
+  var label = labelTargetPapanInfo(target);
+  if (!label) return '';
+  return '<span class="papan-info-badge papan-info-badge-target">' + escapeHtml(label) + '</span>';
+}
+
+function renderBadgeStatusPapanInfo(status) {
+  var label = labelStatusPapanInfo(status);
+  if (!label) return '';
+  return '<span class="papan-info-badge papan-info-badge-status papan-info-badge-status-' + escapeHtml(status) + '">' + escapeHtml(label) + '</span>';
+}
+
+function ambilLabelFilterPapanInfo(f) {
+  if (f === 'terbit')  return 'Terbit';
+  if (f === 'draft')   return 'Draft';
+  if (f === 'arsip')   return 'Arsip';
+  return 'Semua';
+}
+
+function setFilterPapanInfo(nilai) {
+  STATE.filterPapanInfo = nilai;
+  var lbl = document.getElementById('label-filter-papan-info');
+  if (lbl) lbl.textContent = ambilLabelFilterPapanInfo(nilai);
+  var menu = document.getElementById('dropdown-filter-papan-info');
+  if (menu) menu.classList.remove('tampil');
+  renderDaftarPapanInfoKeWadah();
+}
+
+function filterPapanInfo(daftar) {
+  var hasil = daftar.slice();
+  if (STATE.filterPapanInfo === 'terbit') hasil = hasil.filter(function (p) { return p.status === 'terbit'; });
+  else if (STATE.filterPapanInfo === 'draft') hasil = hasil.filter(function (p) { return p.status === 'draft'; });
+  else if (STATE.filterPapanInfo === 'arsip') hasil = hasil.filter(function (p) { return p.status === 'arsip'; });
+  if (STATE.searchPapanInfo) {
+    var kunci = STATE.searchPapanInfo.toLowerCase().trim();
+    hasil = hasil.filter(function (p) {
+      return (String(p.judul || '').toLowerCase().indexOf(kunci) > -1) ||
+             (String(p.isi || '').toLowerCase().indexOf(kunci) > -1);
+    });
+  }
+  return hasil;
+}
+
+function renderItemFilterPapanInfo(nilai, label) {
+  var aktif = STATE.filterPapanInfo === nilai ? ' aktif' : '';
+  return '<button class="dropdown-filter-item' + aktif + '" onclick="setFilterPapanInfo(\'' + nilai + '\')" type="button"><span>' + escapeHtml(label) + '</span>' + (STATE.filterPapanInfo === nilai ? SVG_ICONS.check : '') + '</button>';
+}
+
+function renderToolbarPapanInfo() {
+  return '<div class="santri-toolbar">' +
+    '<div class="santri-search">' + SVG_ICONS.search + '<input id="papan-info-search-input" placeholder="Cari judul atau isi papan info..." type="text" value="' + escapeHtml(STATE.searchPapanInfo) + '"></div>' +
+    '<div class="santri-toolbar-aksi">' +
+      '<div class="dropdown-filter">' +
+        '<button class="dropdown-filter-tombol" onclick="toggleDropdownFilter(\'dropdown-filter-papan-info\')" type="button">' + SVG_ICONS.filter + '<span class="dropdown-filter-label">Filter:</span><span id="label-filter-papan-info">' + ambilLabelFilterPapanInfo(STATE.filterPapanInfo) + '</span>' + SVG_ICONS.chevronDown + '</button>' +
+        '<div class="dropdown-filter-menu" id="dropdown-filter-papan-info">' +
+          renderItemFilterPapanInfo('semua', 'Semua') +
+          renderItemFilterPapanInfo('terbit', 'Terbit') +
+          renderItemFilterPapanInfo('draft', 'Draft') +
+          renderItemFilterPapanInfo('arsip', 'Arsip') +
+        '</div>' +
+      '</div>' +
+      '<a class="btn btn-utama" href="#/admin/pengumuman/tambah">' + SVG_ICONS.plus + '<span>Tambah Papan Info</span></a>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderKartuPapanInfo(pgm) {
+  var judul = escapeHtml(pgm.judul || '(tanpa judul)');
+  var isiRingkas = String(pgm.isi || '');
+  if (isiRingkas.length > 160) isiRingkas = isiRingkas.substring(0, 160) + '...';
+  isiRingkas = escapeHtml(isiRingkas);
+
+  var tanggalTampil = pgm.tanggal_terbit ? formatTanggalIndo(pgm.tanggal_terbit) : (pgm.dibuat_pada ? formatTanggalIndo(pgm.dibuat_pada) : '');
+
+  var lampiranHtml = '';
+  if (pgm.lampiran_url) {
+    lampiranHtml = '<span class="papan-info-lampiran" title="Ada lampiran">' + SVG_ICONS.file + '</span>';
+  }
+
+  var html = '<div class="papan-info-card papan-info-card-' + escapeHtml(pgm.status || 'draft') + '">';
+  html += '<div class="papan-info-card-header">';
+  html += '<div class="papan-info-badges">' + renderBadgeKategoriPapanInfo(pgm.kategori) + renderBadgeStatusPapanInfo(pgm.status) + '</div>';
+  html += lampiranHtml;
+  html += '</div>';
+  html += '<h3 class="papan-info-card-judul">' + judul + '</h3>';
+  html += '<p class="papan-info-card-isi">' + isiRingkas + '</p>';
+  html += '<div class="papan-info-card-meta">';
+  html += '<span class="papan-info-card-tanggal">' + SVG_ICONS.calendar + '<span>' + escapeHtml(tanggalTampil) + '</span></span>';
+  html += renderBadgeTargetPapanInfo(pgm.target);
+  html += '</div>';
+  html += '<div class="papan-info-card-aksi">';
+  html += '<button class="santri-aksi-tombol" onclick="aksiUbahStatusPapanInfo(\'' + escapeHtml(pgm.id) + '\',\'' + escapeHtml(pgm.status || 'draft') + '\')" title="Ubah Status" type="button">' + SVG_ICONS.refresh + '</button>';
+  html += '<a class="santri-aksi-tombol" href="#/admin/pengumuman/edit/' + escapeHtml(pgm.id) + '" title="Edit">' + SVG_ICONS.edit + '</a>';
+  html += '<button class="santri-aksi-tombol danger" onclick="konfirmasiHapusPapanInfo(\'' + escapeHtml(pgm.id) + '\',\'' + escapeHtml(pgm.judul || '') + '\')" title="Hapus" type="button">' + SVG_ICONS.trash + '</button>';
+  html += '</div>';
+  html += '</div>';
+  return html;
+}
+
+function renderDaftarPapanInfoKeWadah() {
+  var wrap = document.getElementById('papan-info-content');
+  if (!wrap) return;
+
+  if (!STATE.daftarPapanInfo || STATE.daftarPapanInfo.length === 0) {
+    wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.megaphone + '<h3>Belum ada papan info</h3><p>Mulai dengan menambahkan papan info pertama.</p><a class="btn btn-utama" href="#/admin/pengumuman/tambah">' + SVG_ICONS.plus + '<span>Tambah Papan Info</span></a></div>';
+    return;
+  }
+
+  var daftar = filterPapanInfo(STATE.daftarPapanInfo);
+
+  if (daftar.length === 0) {
+    wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.search + '<h3>Tidak ada hasil</h3><p>Tidak ada papan info yang cocok dengan filter/pencarian.</p><button class="btn btn-outline" onclick="resetFilterPapanInfo()" type="button">Reset Filter</button></div>';
+    return;
+  }
+
+  var html = '<div class="santri-info-count">Menampilkan <strong>' + daftar.length + '</strong> dari <strong>' + STATE.daftarPapanInfo.length + '</strong> papan info</div>';
+  html += '<div class="papan-info-grid">';
+  daftar.forEach(function (p) { html += renderKartuPapanInfo(p); });
+  html += '</div>';
+  wrap.innerHTML = html;
+}
+
+function resetFilterPapanInfo() {
+  STATE.filterPapanInfo = 'semua';
+  STATE.searchPapanInfo = '';
+  var inp = document.getElementById('papan-info-search-input');
+  if (inp) inp.value = '';
+  var lbl = document.getElementById('label-filter-papan-info');
+  if (lbl) lbl.textContent = 'Semua';
+  renderDaftarPapanInfoKeWadah();
+}
+
+function renderHalamanPapanInfo(wadah) {
+  if (!pastikanLoginAdmin()) return;
+  wadah.innerHTML = '' +
+    buatHalamanHeader('Papan Info', 'Kelola papan informasi pesantren') +
+    renderToolbarPapanInfo() +
+    '<div id="papan-info-content"><div class="loading-box"><div class="spinner"></div><p class="teks-lembut">Memuat papan info...</p></div></div>';
+  pasangEventToolbarPapanInfo();
+  muatPapanInfo();
+}
+
+function pasangEventToolbarPapanInfo() {
+  var inp = document.getElementById('papan-info-search-input');
+  if (inp) {
+    var tmr = null;
+    inp.addEventListener('input', function () {
+      clearTimeout(tmr);
+      var v = this.value;
+      tmr = setTimeout(function () { STATE.searchPapanInfo = v; renderDaftarPapanInfoKeWadah(); }, 250);
+    });
+  }
+}
+
+function muatPapanInfo() {
+  panggilApi('ambilSemuaPengumuman', {}, 'POST').then(function (res) {
+    if (res && res.sukses && res.data && Array.isArray(res.data)) {
+      STATE.daftarPapanInfo = res.data;
+      renderDaftarPapanInfoKeWadah();
+    } else {
+      var wrap = document.getElementById('papan-info-content');
+      if (wrap) wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.warning + '<h3>Gagal memuat data</h3><p>' + escapeHtml((res && res.pesan) || 'Terjadi kesalahan.') + '</p><button class="btn btn-outline" onclick="muatPapanInfo()" type="button">' + SVG_ICONS.refresh + '<span>Coba Lagi</span></button></div>';
+    }
+  });
+}
+
+function renderPapanInfoDashboard() {
+  return '<div class="pengumuman-box" id="dashboard-papan-info">' +
+    '<div class="pengumuman-header">' + SVG_ICONS.megaphone + '<span>Papan Info</span><a class="pengumuman-link" href="#/admin/pengumuman">Lihat semua</a></div>' +
+    '<div class="pengumuman-list" id="dashboard-papan-info-list"><div class="loading-box-sm"><div class="spinner"></div></div></div>' +
+  '</div>';
+}
+
+function muatPapanInfoDashboard() {
+  var wadah = document.getElementById('dashboard-papan-info-list');
+  if (!wadah) return;
+  panggilApi('ambilPengumumanPublik', { limit: 5 }, 'POST').then(function (res) {
+    if (!res || !res.sukses || !res.data || res.data.length === 0) {
+      wadah.innerHTML = '<div class="pengumuman-kosong">Tidak ada papan info terbaru</div>';
+      return;
+    }
+    var html = '';
+    res.data.forEach(function (p) {
+      var tgl = p.tanggal_terbit ? formatTanggalIndo(p.tanggal_terbit) : (p.dibuat_pada ? formatTanggalIndo(p.dibuat_pada) : '');
+      var isiRingkas = String(p.isi || '');
+      if (isiRingkas.length > 100) isiRingkas = isiRingkas.substring(0, 100) + '...';
+      html += '<div class="pengumuman-item">';
+      html += '<div class="pengumuman-item-header"><span class="pengumuman-item-kategori">' + escapeHtml(labelKategoriPapanInfo(p.kategori)) + '</span><span class="pengumuman-item-tanggal">' + escapeHtml(tgl) + '</span></div>';
+      html += '<div class="pengumuman-item-judul">' + escapeHtml(p.judul || '') + '</div>';
+      html += '<div class="pengumuman-item-isi">' + escapeHtml(isiRingkas) + '</div>';
+      html += '</div>';
+    });
+    wadah.innerHTML = html;
+  });
+}
+
+/* ============================================================
+ * PAPAN INFO - FORM TAMBAH/EDIT
+ * ============================================================ */
+
+function papanInfoFieldKategori(nilai, wajib) {
+  var opsi = [
+    { v: 'informasi',    t: 'Informasi' },
+    { v: 'akademik',     t: 'Akademik' },
+    { v: 'administrasi', t: 'Administrasi' },
+    { v: 'prestasi',     t: 'Prestasi' },
+    { v: 'kegiatan',     t: 'Kegiatan' }
+  ];
+  return selectField('Kategori', 'papan-info-kategori', nilai || 'informasi', wajib, opsi);
+}
+
+function papanInfoFieldTarget(nilai, wajib) {
+  var opsi = [
+    { v: 'semua',  t: 'Semua' },
+    { v: 'santri', t: 'Santri' },
+    { v: 'guru',   t: 'Guru' },
+    { v: 'wali',   t: 'Wali' }
+  ];
+  return selectField('Target', 'papan-info-target', nilai || 'semua', wajib, opsi);
+}
+
+function papanInfoFieldStatus(nilai, wajib) {
+  var opsi = [
+    { v: 'draft',  t: 'Draft (belum terbit)' },
+    { v: 'terbit', t: 'Terbit (tampil di papan info)' },
+    { v: 'arsip',  t: 'Arsip (disembunyikan)' }
+  ];
+  return selectField('Status', 'papan-info-status', nilai || 'draft', wajib, opsi);
+}
+
+function renderFormPapanInfo(wadah, dataEdit) {
+  var p = dataEdit || {};
+  var adalahEdit = !!dataEdit;
+  var judul = adalahEdit ? 'Edit Papan Info' : 'Tambah Papan Info';
+  var deskripsi = adalahEdit ? 'Perbarui papan info: ' + (p.judul || '') : 'Lengkapi data papan info baru';
+
+  var html = '' +
+    '<div class="admin-halaman-header">' +
+      '<div class="admin-halaman-judul-wrap">' +
+        '<a class="btn btn-ghost btn-sm" href="#/admin/pengumuman" style="margin-bottom:8px">' + SVG_ICONS.arrowLeft + '<span>Kembali</span></a>' +
+        '<h1 class="admin-halaman-judul">' + escapeHtml(judul) + '</h1>' +
+        '<p class="admin-halaman-deskripsi">' + escapeHtml(deskripsi) + '</p>' +
+      '</div>' +
+    '</div>' +
+    '<form id="form-papan-info" onsubmit="submitFormPapanInfo(event)">' +
+      '<input id="papan-info-id" type="hidden" value="' + escapeHtml(p.id || '') + '">' +
+      '<div class="form-card">' +
+        '<div class="form-card-judul">' + SVG_ICONS.megaphone + '<span>Konten Papan Info</span></div>' +
+        '<div class="form-grid form-grid-2">' +
+          '<div class="form-grup" style="grid-column:1/-1">' +
+            '<label class="form-label" for="papan-info-judul">Judul<span class="form-label-wajib-tanda">*</span></label>' +
+            '<input class="form-input" id="papan-info-judul" maxlength="150" placeholder="Judul papan info" type="text" value="' + escapeHtml(p.judul || '') + '" style="padding-left:14px">' +
+          '</div>' +
+        '</div>' +
+        '<div class="form-grid form-grid-2" style="margin-top:16px">' +
+          papanInfoFieldKategori(p.kategori, true) +
+          papanInfoFieldTarget(p.target, true) +
+        '</div>' +
+        '<div style="margin-top:16px">' +
+          '<div class="form-grup">' +
+            '<label class="form-label" for="papan-info-isi">Isi Papan Info<span class="form-label-wajib-tanda">*</span></label>' +
+            '<textarea class="form-textarea" id="papan-info-isi" maxlength="5000" placeholder="Tulis isi papan info di sini..." style="min-height:180px">' + escapeHtml(p.isi || '') + '</textarea>' +
+            '<div class="form-hint">Maksimal 5000 karakter.</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="form-card">' +
+        '<div class="form-card-judul">' + SVG_ICONS.settings + '<span>Pengaturan</span></div>' +
+        '<div class="form-grid form-grid-2">' +
+          papanInfoFieldStatus(p.status, true) +
+          field('Tanggal Kadaluarsa', 'papan-info-tanggal-kadaluarsa', p.tanggal_kadaluarsa, false, 'date', 'Opsional') +
+        '</div>' +
+        '<div style="margin-top:16px">' +
+          field('URL Lampiran', 'papan-info-lampiran-url', p.lampiran_url, false, 'url', 'https://... (opsional)') +
+          '<div class="form-hint">Tempel link Drive atau URL eksternal untuk lampiran (opsional).</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="form-tombol" style="display:flex;gap:12px;justify-content:flex-end;margin-bottom:32px">' +
+        '<a class="btn btn-ghost" href="#/admin/pengumuman">Batal</a>' +
+        '<button class="btn btn-utama" id="tombol-simpan-papan-info" type="submit">' + (adalahEdit ? 'Simpan Perubahan' : 'Simpan Papan Info') + '</button>' +
+      '</div>' +
+    '</form>';
+  wadah.innerHTML = html;
+}
+
+function renderHalamanTambahPapanInfo(wadah) {
+  if (!pastikanLoginAdmin()) return;
+  renderFormPapanInfo(wadah, null);
+}
+
+function renderHalamanEditPapanInfo(wadah, id) {
+  if (!pastikanLoginAdmin()) return;
+  wadah.innerHTML = '<div class="loading-box"><div class="spinner"></div><p class="teks-lembut">Memuat papan info...</p></div>';
+  panggilApi('ambilPengumumanBerdasarkanId', { id: id }, 'POST').then(function (res) {
+    if (res && res.sukses && res.data) renderFormPapanInfo(wadah, res.data);
+    else {
+      wadah.innerHTML = '<div class="admin-placeholder"><div class="admin-placeholder-ikon">' + SVG_ICONS.warning + '</div><h2>Data tidak ditemukan</h2><p>Papan info dengan ID tersebut tidak ada.</p><a class="btn btn-utama mt-4" href="#/admin/pengumuman">Kembali ke Papan Info</a></div>';
+    }
+  });
+}
+
+function submitFormPapanInfo(e) {
+  if (e) e.preventDefault();
+  var idEdit = document.getElementById('papan-info-id').value;
+  var adalahEdit = !!idEdit;
+  var tombol = document.getElementById('tombol-simpan-papan-info');
+
+  var data = {
+    judul: ambilNilai('papan-info-judul'),
+    isi: ambilNilai('papan-info-isi'),
+    kategori: ambilNilai('papan-info-kategori'),
+    target: ambilNilai('papan-info-target'),
+    status: ambilNilai('papan-info-status'),
+    lampiran_url: ambilNilai('papan-info-lampiran-url'),
+    tanggal_kadaluarsa: ambilNilai('papan-info-tanggal-kadaluarsa')
+  };
+
+  if (!data.judul) { tampilkanToast('Judul wajib diisi.', 'gagal'); return; }
+  if (!data.isi)   { tampilkanToast('Isi papan info wajib diisi.', 'gagal'); return; }
+  if (!data.kategori) { tampilkanToast('Kategori wajib diisi.', 'gagal'); return; }
+  if (!data.target)   { tampilkanToast('Target wajib diisi.', 'gagal'); return; }
+
+  if (tombol) { tombol.disabled = true; tombol.innerHTML = 'Menyimpan...'; }
+
+  var aksi = adalahEdit ? 'perbaruiPengumuman' : 'tambahPengumuman';
+  var muatan = adalahEdit ? { id: idEdit, data: data } : { data: data };
+
+  panggilApi(aksi, muatan, 'POST').then(function (res) {
+    if (tombol) { tombol.disabled = false; tombol.innerHTML = adalahEdit ? 'Simpan Perubahan' : 'Simpan Papan Info'; }
+    if (res && res.sukses) {
+      tampilkanToast(adalahEdit ? 'Papan info berhasil diperbarui.' : 'Papan info baru berhasil ditambahkan.', 'sukses');
+      window.location.hash = '#/admin/pengumuman';
+    } else {
+      tampilkanToast((res && res.pesan) || 'Gagal menyimpan papan info.', 'gagal');
+    }
+  }).catch(function (err) {
+    if (tombol) { tombol.disabled = false; tombol.innerHTML = adalahEdit ? 'Simpan Perubahan' : 'Simpan Papan Info'; }
+    logDebug('Gagal simpan papan info:', err);
+    tampilkanToast('Terjadi kesalahan saat menyimpan.', 'gagal');
+  });
+}
+
+function konfirmasiHapusPapanInfo(id, judul) {
+  var html = '<p class="modal-konfirmasi-tanya">Yakin ingin menghapus papan info <span class="modal-konfirmasi-nama">' + escapeHtml(judul) + '</span>?</p><p class="teks-lembut" style="font-size:13px">Papan info akan <strong>dihapus permanen</strong> dari database. Tindakan ini tidak bisa dibatalkan.</p>';
+  var footer = '<button class="btn btn-ghost" onclick="tutupModal()" type="button">Batal</button><button class="btn btn-danger" onclick="hapusPapanInfoProses(\'' + escapeHtml(id) + '\')" type="button">Hapus</button>';
+  bukaModal('Konfirmasi Hapus', html, footer);
+}
+
+function hapusPapanInfoProses(id) {
+  tutupModal();
+  panggilApi('hapusPengumuman', { id: id }, 'POST').then(function (res) {
+    if (res && res.sukses) {
+      tampilkanToast('Papan info berhasil dihapus.', 'sukses');
+      muatPapanInfo();
+    } else {
+      tampilkanToast((res && res.pesan) || 'Gagal menghapus.', 'gagal');
+    }
+  });
+}
+
+function aksiUbahStatusPapanInfo(id, statusSekarang) {
+  var urutan = ['draft', 'terbit', 'arsip'];
+  var idx = urutan.indexOf(statusSekarang);
+  if (idx === -1) idx = 0;
+  var statusBaru = urutan[(idx + 1) % urutan.length];
+
+  var label = labelStatusPapanInfo(statusBaru);
+  var html = '<p class="modal-konfirmasi-tanya">Ubah status papan info menjadi <span class="modal-konfirmasi-nama">' + escapeHtml(label) + '</span>?</p>' +
+    '<p class="teks-lembut" style="font-size:13px">' +
+    (statusBaru === 'terbit' ? 'Papan info akan <strong>tampil</strong> di papan info publik.' : '') +
+    (statusBaru === 'draft' ? 'Papan info akan <strong>disembunyikan</strong> dari publik (draft).' : '') +
+    (statusBaru === 'arsip' ? 'Papan info akan <strong>diarsipkan</strong>, data tetap tersimpan.' : '') +
+    '</p>';
+  var footer = '<button class="btn btn-ghost" onclick="tutupModal()" type="button">Batal</button><button class="btn btn-utama" onclick="prosesUbahStatusPapanInfo(\'' + escapeHtml(id) + '\',\'' + escapeHtml(statusBaru) + '\')" type="button">Ubah</button>';
+  bukaModal('Ubah Status Papan Info', html, footer);
+}
+
+function prosesUbahStatusPapanInfo(id, status) {
+  tutupModal();
+  panggilApi('ubahStatusPengumuman', { id: id, status: status }, 'POST').then(function (res) {
+    if (res && res.sukses) {
+      tampilkanToast('Status papan info berhasil diubah ke ' + labelStatusPapanInfo(status) + '.', 'sukses');
+      muatPapanInfo();
+    } else {
+      tampilkanToast((res && res.pesan) || 'Gagal mengubah status.', 'gagal');
+    }
+  });
+}
+
+/* ============================================================
+ * RENDER PUBLIK
+ * ============================================================ */
+
 function renderHero() { return '<section class="hero"><div class="container hero-inner"><span class="hero-badge">Pesantren ELKAROM</span><h1 class="hero-judul">Mulia dengan <span>Ilmu</span></h1><p class="hero-sub">Membangun generasi berilmu, berakhlak, dan berkarakter. Lembaga pendidikan Islam yang memadukan keilmuan diniyah, kecintaan pada Al-Quran, dan penguasaan kitab kuning.</p><div class="hero-aksi"><a class="btn btn-aksen" href="#/pendaftaran">Daftar Sekarang</a><a class="btn btn-outline-putih" href="#/profil">Pelajari Lebih Lanjut</a></div></div></section>'; }
 function renderKerangkaKurikulum() { var item = DATA_STATIS.kerangkaKurikulum.map(function (k) { return '<div class="kurikulum-card"><div class="kurikulum-icon">' + (SVG_ICONS[k.icon] || '') + '</div><h3 class="kurikulum-judul">' + escapeHtml(k.judul) + '</h3><p class="kurikulum-teks">' + escapeHtml(k.deskripsi) + '</p></div>'; }).join(''); return '<section class="section section-alt"><div class="container"><div class="section-header"><span class="section-label">Kerangka Kurikulum</span><h2 class="section-judul">Fondasi Keilmuan Kami</h2><p class="section-deskripsi">Empat pilar kurikulum yang menjadi dasar pendidikan santri di ELKAROM.</p></div><div class="kurikulum-grid">' + item + '</div></div></section>'; }
 function renderSambutan() { return '<section class="section"><div class="container"><div class="section-header"><span class="section-label">Sambutan</span><h2 class="section-judul">Dari Pimpinan Pesantren</h2></div><div class="sambutan-grid"><div class="sambutan-foto-wrap"><div class="sambutan-foto"><span class="sambutan-foto-placeholder">KH</span></div><div class="sambutan-nama"><div class="sambutan-nama-utama">KH. Abdul Karim</div><div class="sambutan-nama-jabatan">Pengasuh Pesantren ELKAROM</div></div></div><div class="sambutan-isi"><span class="sambutan-quote">"</span><p class="sambutan-arab">العِلْمُ نُورٌ وَالجَهْلُ ظَلَامٌ</p><p class="sambutan-teks">Alhamdulillah, segala puji bagi Allah yang telah memberi taufik dan hidayah-Nya. Kami menyambut baik kehadiran Anda di ELKAROM.</p><p class="sambutan-teks">Ilmu adalah cahaya, dan kegelapan akan sirna dengan ilmu. Melalui pendidikan yang berimbang antara ilmu diniyah dan ilmu umum, kami berharap santri ELKAROM tumbuh menjadi pribadi yang bermanfaat.</p><a class="btn btn-outline mt-2" href="#/profil">Baca Selengkapnya</a></div></div></div></section>'; }
@@ -1215,14 +1643,13 @@ function renderDropdownTahunAjaran() {
 }
 function toggleDropdownFilter(id) { var el = document.getElementById(id); if (!el) return; var semua = document.querySelectorAll('.dropdown-filter-menu'); for (var i = 0; i < semua.length; i++) if (semua[i].id !== id) semua[i].classList.remove('tampil'); el.classList.toggle('tampil'); }
 function pilihTahunAjaran(tahun) { TAHUN_AJARAN_AKTIF = tahun; var elLabel = document.getElementById('label-tahun-ajaran'); if (elLabel) elLabel.textContent = tahun; var menu = document.getElementById('dropdown-tahun-menu'); if (menu) menu.classList.remove('tampil'); tampilkanToast('Tahun ajaran diubah ke ' + tahun + '.', 'info', 'Tahun Ajaran'); }
-function renderPapanPengumuman() { return '<div class="pengumuman-box"><div class="pengumuman-header">' + SVG_ICONS.megaphone + '<span>Pengumuman</span></div><div class="pengumuman-kosong">Tidak ada pengumuman</div></div>'; }
 function renderModalTambah() {
   var opsi = [
     { label: 'Tambah Santri', route: '#/admin/santri/tambah', icon: 'userPlus' },
     { label: 'Tambah Guru', route: '#/admin/guru', icon: 'userCheck' },
     { label: 'Tambah Prestasi', route: '#/admin/prestasi', icon: 'award' },
     { label: 'Tambah Kelas', route: '#/admin/kelas', icon: 'grid' },
-    { label: 'Tambah Pengumuman', route: '#/admin/pengumuman', icon: 'megaphone' },
+    { label: 'Tambah Papan Info', route: '#/admin/pengumuman/tambah', icon: 'megaphone' },
     { label: 'Tambah User', route: '#/admin/user', icon: 'user' }
   ];
   var html = '<div class="modal-grid">' + opsi.map(function (o) { return '<a class="modal-opsi" href="' + o.route + '" onclick="tutupModal()"><div class="modal-opsi-icon">' + (SVG_ICONS[o.icon] || SVG_ICONS.infoCircle) + '</div><div class="modal-opsi-label">' + escapeHtml(o.label) + '</div></a>'; }).join('') + '</div>';
@@ -1235,12 +1662,12 @@ function renderDashboardAdmin(wadah) {
   var tanggal = ambilTanggalHariIni();
   wadah.innerHTML = '<div class="admin-halaman-header"><div class="admin-halaman-judul-wrap"><h1 class="admin-halaman-judul">Dashboard</h1><p class="admin-halaman-deskripsi">Ringkasan aktivitas Pesantren ELKAROM</p></div><div class="admin-halaman-toolbar">' + renderDropdownTahunAjaran() + '</div></div>' +
     '<div class="dash-salam" style="background:linear-gradient(135deg,var(--warna-utama) 0%,var(--warna-utama-tua) 100%);color:white;border-radius:16px;padding:32px;margin-bottom:24px;position:relative;overflow:hidden"><div style="position:relative;z-index:1"><h1 style="font-size:24px;font-weight:800;color:white;margin-bottom:8px">' + escapeHtml(salam) + ', <span style="color:var(--warna-aksen)">' + escapeHtml(namaLengkap) + '</span></h1><div style="font-size:14.5px;color:rgba(255,255,255,0.9);display:inline-flex;align-items:center;gap:8px">' + SVG_ICONS.calendar + '<span>' + escapeHtml(tanggal) + '</span></div></div></div>' +
-    renderPapanPengumuman() +
-    '<div style="margin-bottom:24px"><div style="margin-bottom:16px"><h3 style="font-size:17px;font-weight:700">Aksi Cepat</h3></div><div class="aksi-cepat-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">' +
-      '<a class="aksi-cepat-item" href="#" onclick="event.preventDefault();renderModalTambah();" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px 16px;background:var(--warna-putih);border-radius:8px;border:1px solid var(--warna-border);text-decoration:none;color:inherit;min-height:96px"><div class="aksi-cepat-icon" style="width:42px;height:42px;border-radius:8px;background:var(--warna-utama-lembut);color:var(--warna-utama);display:flex;align-items:center;justify-content:center">' + SVG_ICONS.plus + '</div><span style="font-size:13px;font-weight:600">Tambah</span></a>' +
-      '<a class="aksi-cepat-item" href="#/admin/santri" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px 16px;background:var(--warna-putih);border-radius:8px;border:1px solid var(--warna-border);text-decoration:none;color:inherit;min-height:96px"><div style="width:42px;height:42px;border-radius:8px;background:var(--warna-utama-lembut);color:var(--warna-utama);display:flex;align-items:center;justify-content:center">' + SVG_ICONS.users + '</div><span style="font-size:13px;font-weight:600">Lihat Santri</span></a>' +
-      '<a class="aksi-cepat-item" href="#/admin/pengumuman" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px 16px;background:var(--warna-putih);border-radius:8px;border:1px solid var(--warna-border);text-decoration:none;color:inherit;min-height:96px"><div style="width:42px;height:42px;border-radius:8px;background:var(--warna-utama-lembut);color:var(--warna-utama);display:flex;align-items:center;justify-content:center">' + SVG_ICONS.megaphone + '</div><span style="font-size:13px;font-weight:600">Buat Pengumuman</span></a>' +
-      '<a class="aksi-cepat-item" href="#/admin/santri" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px 16px;background:var(--warna-putih);border-radius:8px;border:1px solid var(--warna-border);text-decoration:none;color:inherit;min-height:96px"><div style="width:42px;height:42px;border-radius:8px;background:var(--warna-utama-lembut);color:var(--warna-utama);display:flex;align-items:center;justify-content:center">' + SVG_ICONS.printer + '</div><span style="font-size:13px;font-weight:600">Cetak KTS</span></a>' +
+    renderPapanInfoDashboard() +
+    '<div style="margin-bottom:24px"><div style="margin-bottom:16px"><h3 style="font-size:17px;font-weight:700">Aksi Cepat</h3></div><div class="aksi-cepat-grid">' +
+      '<a class="aksi-cepat-item" href="#" onclick="event.preventDefault();renderModalTambah();"><div class="aksi-cepat-icon">' + SVG_ICONS.plus + '</div><span>Tambah</span></a>' +
+      '<a class="aksi-cepat-item" href="#/admin/santri"><div class="aksi-cepat-icon">' + SVG_ICONS.users + '</div><span>Lihat Santri</span></a>' +
+      '<a class="aksi-cepat-item" href="#/admin/pengumuman"><div class="aksi-cepat-icon">' + SVG_ICONS.megaphone + '</div><span>Papan Info</span></a>' +
+      '<a class="aksi-cepat-item" href="#/admin/santri"><div class="aksi-cepat-icon">' + SVG_ICONS.printer + '</div><span>Cetak KTS</span></a>' +
     '</div></div>' +
     '<div style="margin-bottom:24px"><div style="margin-bottom:16px"><h3 style="font-size:17px;font-weight:700">Statistik Santri</h3></div><div class="stat-grid" id="dash-stat-grid">' +
       '<div class="stat-card"><div class="stat-label">Total Santri</div><div class="stat-nilai" id="dash-stat-total"><span class="stat-loading"></span></div></div>' +
@@ -1255,6 +1682,7 @@ function renderDashboardAdmin(wadah) {
     var map = { 'dash-stat-total': d.total || 0, 'dash-stat-aktif': d.aktif || 0, 'dash-stat-alumni': d.alumni || 0, 'dash-stat-putra': d.putra || 0, 'dash-stat-putri': d.putri || 0 };
     for (var k in map) { if (map.hasOwnProperty(k)) { var el = document.getElementById(k); if (el) el.textContent = map[k]; } }
   });
+  muatPapanInfoDashboard();
 }
 function renderHalamanAdminPlaceholder(wadah, judul, deskripsi) { wadah.innerHTML = '<div class="admin-halaman-header"><div class="admin-halaman-judul-wrap"><h1 class="admin-halaman-judul">' + escapeHtml(judul) + '</h1><p class="admin-halaman-deskripsi">' + escapeHtml(deskripsi || 'Modul ini sedang dalam pengembangan.') + '</p></div></div><div class="admin-placeholder"><div class="admin-placeholder-ikon">' + SVG_ICONS.info + '</div><h2>' + escapeHtml(judul) + '</h2><p>Halaman ini sedang dalam pengembangan dan akan segera tersedia.</p><div class="admin-placeholder-badge">SEGERA HADIR</div></div>'; }
 function prosesLogout() { var tokenSaatIni = STATE.token; hapusSesi(); if (tokenSaatIni) { panggilApi('logout', { token: tokenSaatIni }, 'POST').then(function () {}); } tampilkanToast('Anda telah keluar dari akun.', 'info', 'Logout'); window.location.hash = '#/'; }
@@ -1276,7 +1704,7 @@ var DAFTAR_HALAMAN = {
   '#/admin/kelas': { judul: 'Kelas', render: null },
   '#/admin/mapel': { judul: 'Mata Pelajaran', render: null },
   '#/admin/kaldik': { judul: 'Kalender Pendidikan', render: null },
-  '#/admin/pengumuman': { judul: 'Buat Pengumuman', render: null },
+  '#/admin/pengumuman': { judul: 'Papan Info', render: renderHalamanPapanInfo },
   '#/admin/berkas': { judul: 'Berkas', render: null },
   '#/admin/ekskul': { judul: 'Ekstrakurikuler', render: null },
   '#/admin/fasilitas': { judul: 'Fasilitas', render: null },
@@ -1323,6 +1751,8 @@ function tanganiRute() {
   if (hash.indexOf('#/admin/santri/tambah') === 0) ruteDinamis = { render: function (w) { renderHalamanTambahSantri(w); }, judul: 'Tambah Santri' };
   else if (hash.indexOf('#/admin/santri/edit/') === 0) { var idEdit = hash.replace('#/admin/santri/edit/', ''); ruteDinamis = { render: function (w) { renderHalamanEditSantri(w, idEdit); }, judul: 'Edit Santri' }; }
   else if (hash.indexOf('#/admin/profil-santri/') === 0) { var idProfil = hash.replace('#/admin/profil-santri/', ''); ruteDinamis = { render: function (w) { renderHalamanProfilSantri(w, idProfil); }, judul: 'Profil Santri' }; }
+  else if (hash.indexOf('#/admin/pengumuman/tambah') === 0) ruteDinamis = { render: function (w) { renderHalamanTambahPapanInfo(w); }, judul: 'Tambah Papan Info' };
+  else if (hash.indexOf('#/admin/pengumuman/edit/') === 0) { var idEditPgm = hash.replace('#/admin/pengumuman/edit/', ''); ruteDinamis = { render: function (w) { renderHalamanEditPapanInfo(w, idEditPgm); }, judul: 'Edit Papan Info' }; }
   var halaman = ruteDinamis || DAFTAR_HALAMAN[hash];
   var semuaLink = document.querySelectorAll('[data-route]');
   for (var i = 0; i < semuaLink.length; i++) {
