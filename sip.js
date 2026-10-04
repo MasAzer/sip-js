@@ -4,7 +4,7 @@ var KONFIG = {
   LABEL_ARTIKEL: 'Pena Pesantren',
   NAMA_APP: 'ELKAROM',
   SLOGAN: 'Mulia dengan Ilmu',
-  VERSI: '7.3.0',
+  VERSI: '7.4.0',
   STORAGE_TOKEN: 'elkarom_token',
   STORAGE_PENGGUNA: 'elkarom_pengguna',
   STORAGE_TEMA: 'elkarom_tema',
@@ -93,7 +93,9 @@ var STATE = {
   cropStartCropY: 0,
   daftarPapanInfo: [],
   filterPapanInfo: 'semua',
-  searchPapanInfo: ''
+  searchPapanInfo: '',
+  pengaturan: null,
+  grupPengaturanAktif: 'identitas'
 };
 var DATA_STATIS = {
   kerangkaKurikulum: [
@@ -1155,6 +1157,79 @@ function gantiTabProfil(el, idTab) {
   });
 }
 
+
+/* ============================================================
+ * MODUL PENGATURAN — INTEGRASI UI
+ * ============================================================ */
+
+/**
+ * Terapkan pengaturan ke UI.
+ * - Warna → CSS variables
+ * - Nama pesantren → navbar, hero, dll
+ * - Logo → gambar navbar (kalau ada)
+ * - Tahun ajaran aktif → STATE
+ */
+function terapkanPengaturanKeUI(pengaturan) {
+  if (!pengaturan) return;
+
+  // ----- Warna -----
+  var tampilan = pengaturan.tampilan || {};
+  var root = document.documentElement;
+  if (tampilan.warna_utama)    root.style.setProperty('--warna-utama', tampilan.warna_utama);
+  if (tampilan.warna_sekunder) root.style.setProperty('--warna-sekunder', tampilan.warna_sekunder);
+  if (tampilan.warna_aksen)    root.style.setProperty('--warna-aksen', tampilan.warna_aksen);
+
+  // ----- Identitas -----
+  var identitas = pengaturan.identitas || {};
+  if (identitas.nama_pesantren) {
+    // Update semua elemen teks yang mengandung "ELKAROM" di navbar
+    var elNavNama = document.querySelectorAll('.navbar-nama-utama, .login-panel-judul, .hero-judul');
+    // Hati-hati: hero-judul punya struktur "Mulia dengan <span>Ilmu</span>" — jangan diubah sembarangan.
+    // Fokus ke nama pesantren di navbar saja.
+    var semuaNavNama = document.querySelectorAll('.navbar-nama-utama');
+    for (var i = 0; i < semuaNavNama.length; i++) {
+      semuaNavNama[i].textContent = identitas.nama_pesantren;
+    }
+    // Update title halaman
+    document.title = identitas.nama_pesantren + ' - SIP';
+  }
+  if (identitas.logo_url) {
+    var semuaLogo = document.querySelectorAll('.navbar-logo, .login-panel-logo');
+    for (var j = 0; j < semuaLogo.length; j++) {
+      semuaLogo[j].innerHTML = '<img alt="Logo" src="' + identitas.logo_url + '" style="width:100%;height:100%;object-fit:contain;border-radius:8px">';
+    }
+  }
+
+  // ----- Akademik -----
+  var akademik = pengaturan.akademik || {};
+  if (akademik.tahun_ajaran_aktif) {
+    // STATE.TAHUN_AJARAN_AKTIF adalah global var di file ini
+    if (typeof TAHUN_AJARAN_AKTIF !== 'undefined') {
+      TAHUN_AJARAN_AKTIF = akademik.tahun_ajaran_aktif;
+    }
+  }
+}
+
+/**
+ * Ambil pengaturan publik dari server (tanpa token).
+ * Dipanggil saat inisialisasi.
+ * @return {Promise}
+ */
+function muatPengaturanPublik() {
+  return panggilApi('ambilPengaturanPublik', {}, 'POST').then(function (res) {
+    if (res && res.sukses && res.data) {
+      STATE.pengaturan = res.data;
+      terapkanPengaturanKeUI(res.data);
+      return res.data;
+    }
+    logDebug('Gagal memuat pengaturan publik:', res);
+    return null;
+  }).catch(function (err) {
+    logDebug('Error muat pengaturan:', err);
+    return null;
+  });
+}
+
 /* ============================================================
  * MODUL PAPAN INFO (PENGUMUMAN)
  * ============================================================ */
@@ -1878,6 +1953,10 @@ function inisialisasi() {
   pasangEventNavbar(); pasangEventAdmin(); pasangEventScrollNavbar();
   window.addEventListener('hashchange', tanganiRute);
   tanganiRute();
+
+  // Muat pengaturan publik (warna, nama, logo, tahun ajaran) — tanpa token
+  muatPengaturanPublik();
+
   if (STATE.token) {
     panggilApi('verifikasiToken', { token: STATE.token }, 'POST').then(function (respon) {
       if (!respon || !respon.sukses) { hapusSesi(); if (STATE.halamanAktif && STATE.halamanAktif.indexOf('#/admin') === 0) window.location.hash = '#/login'; }
@@ -1885,5 +1964,6 @@ function inisialisasi() {
     });
   } else { panggilApi('ping', {}, 'GET').then(function (respon) { logDebug('Ping GAS:', respon); }); }
 }
+
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', inisialisasi);
 else inisialisasi();
