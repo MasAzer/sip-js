@@ -1230,6 +1230,324 @@ function muatPengaturanPublik() {
   });
 }
 
+
+/* ============================================================
+ * MODUL PENGATURAN — HALAMAN ADMIN
+ * ============================================================ */
+
+/**
+ * Label grup pengaturan (frontend, mirror backend).
+ */
+function labelGrupPengaturanUI(kode) {
+  var peta = {
+    'identitas':   'Identitas Pesantren',
+    'tampilan':    'Tampilan',
+    'akademik':    'Akademik',
+    'spp':         'Biaya / SPP',
+    'whatsapp':    'WhatsApp',
+    'notifikasi':  'Notifikasi',
+    'papan_info':  'Papan Info',
+    'galeri':      'Galeri',
+    'rahasia':     'Rahasia'
+  };
+  return peta[kode] || kode;
+}
+
+/**
+ * Ikon grup pengaturan.
+ */
+function ikonGrupPengaturanUI(kode) {
+  var peta = {
+    'identitas':   'mosque',
+    'tampilan':    'settings',
+    'akademik':    'graduation',
+    'spp':         'dollar',
+    'whatsapp':    'phone',
+    'notifikasi':  'bell',
+    'papan_info':  'megaphone',
+    'galeri':      'image',
+    'rahasia':     'lock'
+  };
+  return SVG_ICONS[peta[kode]] || SVG_ICONS.infoCircle;
+}
+
+/**
+ * Kelompokkan pengaturan per grup.
+ */
+function kelompokkanPengaturan(daftar) {
+  var hasil = {};
+  daftar.forEach(function (p) {
+    if (!hasil[p.grup]) hasil[p.grup] = [];
+    hasil[p.grup].push(p);
+  });
+  return hasil;
+}
+
+/**
+ * Render 1 field input pengaturan sesuai tipe.
+ */
+function renderFieldPengaturan(item) {
+  var kunci = item.kunci;
+  var nilai = item.nilai || '';
+  var tipe = item.tipe_input || 'text';
+  var label = escapeHtml(item.keterangan || kunci);
+  var idField = 'pengaturan-' + kunci;
+
+  var labelHtml = '<label class="pengaturan-label" for="' + idField + '">' + label + '</label>';
+  var hintHtml = '<div class="pengaturan-kunci">' + escapeHtml(kunci) + '</div>';
+
+  var inputHtml = '';
+
+  if (tipe === 'textarea') {
+    inputHtml = '<textarea class="form-textarea" id="' + idField + '" data-kunci="' + escapeHtml(kunci) + '" rows="3">' + escapeHtml(nilai) + '</textarea>';
+  } else if (tipe === 'select') {
+    var opsi = item.opsi || [];
+    var optsHtml = '<option value="">-- Pilih --</option>';
+    opsi.forEach(function (o) {
+      optsHtml += '<option value="' + escapeHtml(o.v) + '"' + (String(nilai) === String(o.v) ? ' selected' : '') + '>' + escapeHtml(o.t) + '</option>';
+    });
+    inputHtml = '<select class="form-select" id="' + idField + '" data-kunci="' + escapeHtml(kunci) + '">' + optsHtml + '</select>';
+  } else if (tipe === 'color') {
+    var warnaHex = /^#[0-9a-fA-F]{6}$/.test(nilai) ? nilai : '#1e88e5';
+    inputHtml = '<div class="pengaturan-color-wrap">' +
+      '<input class="pengaturan-color-picker" id="' + idField + '" data-kunci="' + escapeHtml(kunci) + '" type="color" value="' + escapeHtml(warnaHex) + '">' +
+      '<input class="form-input pengaturan-color-text" data-kunci-text="' + escapeHtml(kunci) + '" type="text" value="' + escapeHtml(nilai || warnaHex) + '" maxlength="7" pattern="^#[0-9a-fA-F]{6}$">' +
+    '</div>';
+  } else if (tipe === 'email') {
+    inputHtml = '<input class="form-input" id="' + idField + '" data-kunci="' + escapeHtml(kunci) + '" type="email" value="' + escapeHtml(nilai) + '">';
+  } else if (tipe === 'url') {
+    inputHtml = '<input class="form-input" id="' + idField + '" data-kunci="' + escapeHtml(kunci) + '" type="url" value="' + escapeHtml(nilai) + '" placeholder="https://...">';
+  } else if (tipe === 'tel') {
+    inputHtml = '<input class="form-input" id="' + idField + '" data-kunci="' + escapeHtml(kunci) + '" type="tel" value="' + escapeHtml(nilai) + '" placeholder="08xx-xxxx-xxxx">';
+  } else if (tipe === 'number') {
+    inputHtml = '<input class="form-input" id="' + idField + '" data-kunci="' + escapeHtml(kunci) + '" type="number" value="' + escapeHtml(nilai) + '">';
+  } else if (tipe === 'password') {
+    inputHtml = '<input class="form-input" id="' + idField + '" data-kunci="' + escapeHtml(kunci) + '" type="password" value="" placeholder="' + (nilai ? '(tersimpan — biarkan kosong jika tidak diubah)' : 'Masukkan nilai rahasia') + '" autocomplete="new-password">';
+  } else {
+    inputHtml = '<input class="form-input" id="' + idField + '" data-kunci="' + escapeHtml(kunci) + '" type="text" value="' + escapeHtml(nilai) + '">';
+  }
+
+  return '<div class="pengaturan-item">' + labelHtml + inputHtml + hintHtml + '</div>';
+}
+
+/**
+ * Render form untuk satu grup pengaturan.
+ */
+function renderFormGrupPengaturan(grup, items) {
+  var ikonHtml = ikonGrupPengaturanUI(grup);
+  var label = labelGrupPengaturanUI(grup);
+
+  var html = '<div class="pengaturan-form-wrap">';
+  html += '<div class="form-card">';
+  html += '<div class="form-card-judul">' + ikonHtml + '<span>' + escapeHtml(label) + '</span></div>';
+  html += '<div class="pengaturan-list">';
+
+  items.forEach(function (item) {
+    html += renderFieldPengaturan(item);
+  });
+
+  html += '</div>'; // pengaturan-list
+  html += '<div class="pengaturan-aksi">';
+  html += '<button class="btn btn-outline" onclick="aksiResetGrupPengaturan(\'' + escapeHtml(grup) + '\')" type="button">' + SVG_ICONS.refresh + '<span>Reset ke Default</span></button>';
+  html += '<button class="btn btn-utama" onclick="submitFormGrupPengaturan(\'' + escapeHtml(grup) + '\')" id="tombol-simpan-pengaturan-' + escapeHtml(grup) + '" type="button">' + SVG_ICONS.check + '<span>Simpan</span></button>';
+  html += '</div>';
+  html += '</div>';
+  html += '</div>';
+
+  return html;
+}
+
+/**
+ * Render halaman Pengaturan utama.
+ */
+function renderHalamanPengaturan(wadah) {
+  if (!pastikanLoginAdmin()) return;
+
+  wadah.innerHTML = '' +
+    buatHalamanHeader('Pengaturan', 'Kelola konfigurasi aplikasi SIP') +
+    '<div id="pengaturan-content"><div class="loading-box"><div class="spinner"></div><p class="teks-lembut">Memuat pengaturan...</p></div></div>';
+
+  muatPengaturanAdmin();
+}
+
+/**
+ * Muat semua pengaturan (admin) lalu render tab + form.
+ */
+function muatPengaturanAdmin() {
+  var wrap = document.getElementById('pengaturan-content');
+  if (!wrap) return;
+
+  panggilApi('ambilSemuaPengaturan', {}, 'POST').then(function (res) {
+    if (!res || !res.sukses || !res.data || !Array.isArray(res.data)) {
+      wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.warning + '<h3>Gagal memuat pengaturan</h3><p>' + escapeHtml((res && res.pesan) || 'Terjadi kesalahan.') + '</p><button class="btn btn-outline" onclick="muatPengaturanAdmin()" type="button">' + SVG_ICONS.refresh + '<span>Coba Lagi</span></button></div>';
+      return;
+    }
+
+    var perGrup = kelompokkanPengaturan(res.data);
+    var daftarGrup = Object.keys(perGrup);
+
+    if (daftarGrup.length === 0) {
+      wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.settings + '<h3>Belum ada pengaturan</h3><p>Jalankan siapkanDatabase() untuk seed pengaturan default.</p></div>';
+      return;
+    }
+
+    // Tentukan grup aktif
+    if (daftarGrup.indexOf(STATE.grupPengaturanAktif) === -1) {
+      STATE.grupPengaturanAktif = daftarGrup[0];
+    }
+
+    // Render tab
+    var tabHtml = '<div class="pengaturan-tabs">';
+    daftarGrup.forEach(function (g) {
+      var aktif = g === STATE.grupPengaturanAktif ? ' aktif' : '';
+      tabHtml += '<button class="pengaturan-tab' + aktif + '" data-grup="' + escapeHtml(g) + '" onclick="gantiTabPengaturan(\'' + escapeHtml(g) + '\')" type="button">' + ikonGrupPengaturanUI(g) + '<span>' + escapeHtml(labelGrupPengaturanUI(g)) + '</span></button>';
+    });
+    tabHtml += '</div>';
+
+    // Render form grup aktif
+    var formHtml = '<div id="pengaturan-form-container">' + renderFormGrupPengaturan(STATE.grupPengaturanAktif, perGrup[STATE.grupPengaturanAktif]) + '</div>';
+
+    // Simpan data ke STATE untuk ganti tab nanti
+    STATE.pengaturan = perGrup;
+
+    wrap.innerHTML = tabHtml + formHtml;
+
+    // Pasang event sinkronisasi color picker <-> text
+    pasangEventColorPicker();
+  });
+}
+
+/**
+ * Ganti tab pengaturan aktif.
+ */
+function gantiTabPengaturan(grup) {
+  if (!STATE.pengaturan || !STATE.pengaturan[grup]) return;
+
+  STATE.grupPengaturanAktif = grup;
+
+  // Update tab aktif
+  var tabs = document.querySelectorAll('.pengaturan-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    if (tabs[i].getAttribute('data-grup') === grup) tabs[i].classList.add('aktif');
+    else tabs[i].classList.remove('aktif');
+  }
+
+  // Render form
+  var container = document.getElementById('pengaturan-form-container');
+  if (container) container.innerHTML = renderFormGrupPengaturan(grup, STATE.pengaturan[grup]);
+
+  // Re-pasang event color picker
+  pasangEventColorPicker();
+}
+
+/**
+ * Sinkronisasi color picker <-> text input untuk tipe color.
+ */
+function pasangEventColorPicker() {
+  var pickers = document.querySelectorAll('.pengaturan-color-picker');
+  for (var i = 0; i < pickers.length; i++) {
+    pickers[i].addEventListener('input', function () {
+      var kunci = this.getAttribute('data-kunci');
+      var textInput = document.querySelector('[data-kunci-text="' + kunci + '"]');
+      if (textInput) textInput.value = this.value;
+    });
+  }
+  var texts = document.querySelectorAll('.pengaturan-color-text');
+  for (var j = 0; j < texts.length; j++) {
+    texts[j].addEventListener('input', function () {
+      var kunci = this.getAttribute('data-kunci-text');
+      var nilai = this.value;
+      if (/^#[0-9a-fA-F]{6}$/.test(nilai)) {
+        var picker = document.querySelector('.pengaturan-color-picker[data-kunci="' + kunci + '"]');
+        if (picker) picker.value = nilai;
+      }
+    });
+  }
+}
+
+/**
+ * Submit form satu grup pengaturan.
+ */
+function submitFormGrupPengaturan(grup) {
+  var items = STATE.pengaturan && STATE.pengaturan[grup];
+  if (!items) { tampilkanToast('Data grup tidak ditemukan.', 'gagal'); return; }
+
+  var data = {};
+  items.forEach(function (item) {
+    var kunci = item.kunci;
+    var tipe = item.tipe_input || 'text';
+    var el = document.getElementById('pengaturan-' + kunci);
+
+    if (!el) return;
+
+    // Untuk color, ambil dari text input (yang bisa diedit user)
+    if (tipe === 'color') {
+      var textEl = document.querySelector('[data-kunci-text="' + kunci + '"]');
+      data[kunci] = textEl ? textEl.value : el.value;
+    } else {
+      data[kunci] = el.value;
+    }
+  });
+
+  var tombol = document.getElementById('tombol-simpan-pengaturan-' + grup);
+  if (tombol) { tombol.disabled = true; tombol.innerHTML = 'Menyimpan...'; }
+
+  panggilApi('simpanPengaturanGrup', { grup: grup, data: data }, 'POST').then(function (res) {
+    if (tombol) { tombol.disabled = false; tombol.innerHTML = SVG_ICONS.check + '<span>Simpan</span>'; }
+
+    if (res && res.sukses) {
+      tampilkanToast((res.pesan) || 'Pengaturan berhasil disimpan.', 'sukses');
+      // Update STATE lokal
+      items.forEach(function (item) {
+        if (data.hasOwnProperty(item.kunci)) {
+          // Untuk password, jangan update nilai lokal (karena kosong)
+          if (item.tipe_input !== 'password') {
+            item.nilai = data[item.kunci];
+          }
+        }
+      });
+      // Re-apply pengaturan ke UI (warna, nama, dll)
+      if (grup === 'tampilan' || grup === 'identitas' || grup === 'akademik') {
+        muatPengaturanPublik();
+      }
+    } else {
+      tampilkanToast((res && res.pesan) || 'Gagal menyimpan pengaturan.', 'gagal');
+    }
+  }).catch(function (err) {
+    if (tombol) { tombol.disabled = false; tombol.innerHTML = SVG_ICONS.check + '<span>Simpan</span>'; }
+    logDebug('Gagal simpan pengaturan:', err);
+    tampilkanToast('Terjadi kesalahan saat menyimpan.', 'gagal');
+  });
+}
+
+/**
+ * Konfirmasi reset grup ke default.
+ */
+function aksiResetGrupPengaturan(grup) {
+  var label = labelGrupPengaturanUI(grup);
+  var html = '<p class="modal-konfirmasi-tanya">Reset grup <span class="modal-konfirmasi-nama">' + escapeHtml(label) + '</span> ke nilai default?</p><p class="teks-lembut" style="font-size:13px">Semua nilai di grup ini akan dikembalikan ke pengaturan awal. Tindakan ini tidak bisa dibatalkan.</p>';
+  var footer = '<button class="btn btn-ghost" onclick="tutupModal()" type="button">Batal</button><button class="btn btn-danger" onclick="prosesResetGrupPengaturan(\'' + escapeHtml(grup) + '\')" type="button">Reset</button>';
+  bukaModal('Reset ke Default', html, footer);
+}
+
+/**
+ * Proses reset grup.
+ */
+function prosesResetGrupPengaturan(grup) {
+  tutupModal();
+  panggilApi('resetPengaturanGrup', { grup: grup }, 'POST').then(function (res) {
+    if (res && res.sukses) {
+      tampilkanToast((res.pesan) || 'Pengaturan berhasil direset.', 'sukses');
+      muatPengaturanAdmin();
+      if (grup === 'tampilan' || grup === 'identitas' || grup === 'akademik') {
+        muatPengaturanPublik();
+      }
+    } else {
+      tampilkanToast((res && res.pesan) || 'Gagal reset pengaturan.', 'gagal');
+    }
+  });
+}
+
 /* ============================================================
  * MODUL PAPAN INFO (PENGUMUMAN)
  * ============================================================ */
@@ -1861,7 +2179,7 @@ var DAFTAR_HALAMAN = {
   '#/admin/publikasi-karya': { judul: 'Karya', render: null },
   '#/admin/user': { judul: 'Data User', render: null },
   '#/admin/aktivitas': { judul: 'Aktivitas', render: null },
-  '#/admin/pengaturan': { judul: 'Pengaturan', render: null }
+  '#/admin/pengaturan': { judul: 'Pengaturan', render: renderHalamanPengaturan }
 };
 
 function ambilHashSaatIni() { return window.location.hash || '#/'; }
