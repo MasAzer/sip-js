@@ -1,10 +1,11 @@
+
 var KONFIG = {
   URL_API_GAS: 'https://script.google.com/macros/s/AKfycby2rGM3Hw7WejiSZxCk43g553fy1Z7ShbuCvkorwlNDtlUui2bu9lOeq7zdXsEXBTI/exec',
   URL_BLOG: 'https://elkarom.blogspot.com',
   LABEL_ARTIKEL: 'Pena Pesantren',
   NAMA_APP: 'ELKAROM',
   SLOGAN: 'Mulia dengan Ilmu',
-  VERSI: '7.4.0',
+  VERSI: '7.5.0',
   STORAGE_TOKEN: 'elkarom_token',
   STORAGE_PENGGUNA: 'elkarom_pengguna',
   STORAGE_TEMA: 'elkarom_tema',
@@ -72,6 +73,16 @@ var SVG_ICONS = {
   rotate: '<svg fill="none" height="16" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="16" xmlns="http://www.w3.org/2000/svg"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>'
 };
 
+/**
+ * Route dashboard default per role.
+ * Dipakai untuk redirect setelah login / saat role tidak berhak.
+ */
+var ROUTE_DASHBOARD_BY_ROLE = {
+  'admin': '#/admin',
+  'guru':  '#/guru',
+  'wali':  '#/wali'
+};
+
 var STATE = {
   token: null,
   pengguna: null,
@@ -132,6 +143,39 @@ var MENU_ADMIN = [
     { label: 'Ekstrakurikuler', route: '#/admin/ekskul', icon: 'star' },
     { label: 'Fasilitas', route: '#/admin/fasilitas', icon: 'grid' }
   ]},
+
+/**
+ * Menu sidebar untuk role guru.
+ * Lebih ringkas dari admin — hanya menu yang relevan.
+ */
+var MENU_GURU = [
+  { grup: 'Menu Utama', tetap_terbuka: true, item: [
+    { label: 'Dashboard', route: '#/guru', icon: 'home' }
+  ]},
+  { grup: 'Akademik', item: [
+    { label: 'Absensi', route: '#/guru/absensi', icon: 'clipboard' },
+    { label: 'Jadwal Pelajaran', route: '#/guru/jadwal', icon: 'calendar' },
+    { label: 'Nilai', route: '#/guru/nilai', icon: 'trendingUp' }
+  ]},
+  { grup: 'Informasi', item: [
+    { label: 'Data Santri', route: '#/guru/santri', icon: 'users' },
+    { label: 'Papan Info', route: '#/guru/papan-info', icon: 'megaphone' }
+  ]}
+];
+
+/**
+ * Menu sidebar untuk role wali.
+ * Paling ringkas — hanya info.
+ */
+var MENU_WALI = [
+  { grup: 'Menu Utama', tetap_terbuka: true, item: [
+    { label: 'Dashboard', route: '#/wali', icon: 'home' }
+  ]},
+  { grup: 'Informasi', item: [
+    { label: 'Papan Info', route: '#/wali/papan-info', icon: 'megaphone' }
+  ]}
+];
+
   { grup: 'Manajemen Santri', item: [
     { label: 'Data Santri', route: '#/admin/santri', icon: 'users' },
     { label: 'Profil Santri', route: '#/admin/profil-santri', icon: 'user' },
@@ -223,6 +267,64 @@ function labelJenisKelamin(kode) {
   return '';
 }
 
+
+/**
+ * Ambil role pengguna saat ini (dari STATE).
+ * @return {string} 'admin' | 'guru' | 'wali' | ''
+ */
+function ambilRoleSaatIni() {
+  if (!STATE.pengguna) return '';
+  return STATE.pengguna.role || '';
+}
+
+/**
+ * Cek apakah route ini hanya untuk admin.
+ */
+function routeKhususAdmin(hash) {
+  // Route admin umum — kecuali dashboard per-role
+  if (hash === '#/guru' || hash.indexOf('#/guru/') === 0) return false;
+  if (hash === '#/wali' || hash.indexOf('#/wali/') === 0) return false;
+  return hash.indexOf('#/admin') === 0;
+}
+
+/**
+ * Cek apakah route ini untuk guru.
+ */
+function routeKhususGuru(hash) {
+  return hash === '#/guru' || hash.indexOf('#/guru/') === 0;
+}
+
+/**
+ * Cek apakah route ini untuk wali.
+ */
+function routeKhususWali(hash) {
+  return hash === '#/wali' || hash.indexOf('#/wali/') === 0;
+}
+
+/**
+ * Redirect ke dashboard sesuai role saat ini.
+ */
+function redirectKeDashboard() {
+  var role = ambilRoleSaatIni();
+  var route = ROUTE_DASHBOARD_BY_ROLE[role] || '#/login';
+  window.location.hash = route;
+}
+
+/**
+ * Update menu sidebar sesuai role.
+ * - Admin: MENU_ADMIN lengkap
+ * - Guru: MENU_GURU
+ * - Wali: MENU_WALI
+ * (MENU_GURU & MENU_WALI didefinisikan di patch berikutnya)
+ */
+function ambilMenuSesuaiRole() {
+  var role = ambilRoleSaatIni();
+  if (role === 'guru' && typeof MENU_GURU !== 'undefined') return MENU_GURU;
+  if (role === 'wali' && typeof MENU_WALI !== 'undefined') return MENU_WALI;
+  return MENU_ADMIN;
+}
+
+
 function panggilApi(action, data, method) {
   var muatan = data || {};
   muatan.action = action;
@@ -303,7 +405,9 @@ function simpanSesi(token, pengguna) {
   STATE.token = token; STATE.pengguna = pengguna;
   try { localStorage.setItem(KONFIG.STORAGE_TOKEN, token); localStorage.setItem(KONFIG.STORAGE_PENGGUNA, JSON.stringify(pengguna)); } catch (e) {}
   perbaruiNavbar();
+  renderMenuSidebar();
 }
+
 function hapusSesi() {
   STATE.token = null; STATE.pengguna = null;
   try { localStorage.removeItem(KONFIG.STORAGE_TOKEN); localStorage.removeItem(KONFIG.STORAGE_PENGGUNA); } catch (e) {}
@@ -369,11 +473,13 @@ function perbaruiTopbarAdmin() {
   if (elDDNama) elDDNama.textContent = namaLengkap;
   if (elDDEmail) elDDEmail.textContent = STATE.pengguna.email || '';
 }
+
 function aturModeLayout() {
   var hash = STATE.halamanAktif || '#/';
-  var diAdmin = hash.indexOf('#/admin') === 0 && STATE.token && STATE.pengguna;
+  var diAreaLogin = hash.indexOf('#/admin') === 0 || hash.indexOf('#/guru') === 0 || hash.indexOf('#/wali') === 0;
+  var diAreaLoginDanMasuk = diAreaLogin && STATE.token && STATE.pengguna;
   var body = document.body;
-  if (diAdmin) {
+  if (diAreaLoginDanMasuk) {
     body.classList.add('mode-admin');
     body.classList.remove('sidebar-mobile-terbuka');
     perbaruiMenuSidebarAktif(hash);
@@ -384,6 +490,7 @@ function aturModeLayout() {
     body.classList.remove('sidebar-mobile-terbuka');
   }
 }
+
 function perbaruiMenuSidebarAktif(hash) {
   var links = document.querySelectorAll('#sidebar-menu .sidebar-link');
   for (var i = 0; i < links.length; i++) {
@@ -403,9 +510,10 @@ function perbaruiBottomNavAktif(hash) {
 function renderMenuSidebar() {
   var wadah = document.getElementById('sidebar-menu');
   if (!wadah) return;
+  var menuAktif = ambilMenuSesuaiRole();
   var grupTerbuka = muatGrupTerbuka();
   var html = '';
-  MENU_ADMIN.forEach(function (grup, idx) {
+  menuAktif.forEach(function (grup, idx) {
     var grupId = 'grup-' + idx;
     var tetapTerbuka = grup.tetap_terbuka === true;
     var terbuka = tetapTerbuka || grupTerbuka.indexOf(grupId) > -1;
@@ -2077,7 +2185,10 @@ function prosesLogin(e) {
     if (!dataLogin.token || !dataLogin.pengguna) { tampilkanErrorLogin('Respons server tidak lengkap.'); return; }
     simpanSesi(dataLogin.token, dataLogin.pengguna);
     tampilkanToast('Selamat datang, ' + (dataLogin.pengguna.nama_lengkap || dataLogin.pengguna.email), 'sukses', 'Login Berhasil');
-    window.location.hash = '#/admin';
+    // Redirect sesuai role
+    var roleUser = dataLogin.pengguna.role || 'admin';
+    var routeTujuan = ROUTE_DASHBOARD_BY_ROLE[roleUser] || '#/admin';
+    window.location.hash = routeTujuan;  
   }).catch(function (err) { aturLoadingTombol(false); logDebug('Error login:', err); tampilkanErrorLogin('Tidak dapat terhubung ke server.'); });
 }
 function renderDropdownTahunAjaran() {
@@ -2179,7 +2290,19 @@ var DAFTAR_HALAMAN = {
   '#/admin/publikasi-karya': { judul: 'Karya', render: null },
   '#/admin/user': { judul: 'Data User', render: null },
   '#/admin/aktivitas': { judul: 'Aktivitas', render: null },
-  '#/admin/pengaturan': { judul: 'Pengaturan', render: renderHalamanPengaturan }
+  '#/admin/pengaturan': { judul: 'Pengaturan', render: renderHalamanPengaturan },
+
+  // Route guru
+  '#/guru': { judul: 'Dashboard Guru', render: renderDashboardGuru },
+  '#/guru/santri': { judul: 'Data Santri', render: renderHalamanSantriGuru },
+  '#/guru/absensi': { judul: 'Absensi', render: function (w) { renderPlaceholderGuruWali(w, 'Absensi'); } },
+  '#/guru/jadwal': { judul: 'Jadwal Pelajaran', render: function (w) { renderPlaceholderGuruWali(w, 'Jadwal Pelajaran'); } },
+  '#/guru/nilai': { judul: 'Nilai', render: function (w) { renderPlaceholderGuruWali(w, 'Nilai'); } },
+  '#/guru/papan-info': { judul: 'Papan Info', render: function (w) { renderHalamanPapanInfo(w); } },
+
+  // Route wali
+  '#/wali': { judul: 'Dashboard Wali', render: renderDashboardWali },
+  '#/wali/papan-info': { judul: 'Papan Info', render: function (w) { renderHalamanPapanInfo(w); } }
 };
 
 function ambilHashSaatIni() { return window.location.hash || '#/'; }
@@ -2204,15 +2327,41 @@ function tanganiRute() {
     if (link.getAttribute('data-route') === hash) link.classList.add('aktif');
     else link.classList.remove('aktif');
   }
-  if (hash.indexOf('#/admin') === 0 && (!STATE.token || !STATE.pengguna)) { window.location.hash = '#/login'; return; }
+
+  // Proteksi: harus login untuk semua route admin/guru/wali
+  var butuhLogin = hash.indexOf('#/admin') === 0 || hash.indexOf('#/guru') === 0 || hash.indexOf('#/wali') === 0;
+  if (butuhLogin && (!STATE.token || !STATE.pengguna)) { window.location.hash = '#/login'; return; }
+
+  // Proteksi: cek apakah role berhak akses route ini
+  var role = ambilRoleSaatIni();
+  if (butuhLogin && role) {
+    // Admin tidak boleh akses /guru atau /wali (kecuali untuk preview — skip dulu)
+    if (role !== 'admin' && routeKhususAdmin(hash)) {
+      // Guru/wali nyasar ke halaman admin → redirect ke dashboard-nya
+      redirectKeDashboard();
+      return;
+    }
+    // Guru tidak boleh akses /wali
+    if (role === 'guru' && routeKhususWali(hash)) {
+      redirectKeDashboard();
+      return;
+    }
+    // Wali tidak boleh akses /guru
+    if (role === 'wali' && routeKhususGuru(hash)) {
+      redirectKeDashboard();
+      return;
+    }
+  }
+
   aturModeLayout();
   if (hash === '#/login') { wadah.style.marginTop = ''; wadah.innerHTML = ''; renderLogin(wadah); }
-  else if (hash.indexOf('#/admin') === 0) {
+  else if (hash.indexOf('#/admin') === 0 || hash.indexOf('#/guru') === 0 || hash.indexOf('#/wali') === 0) {
     wadah.innerHTML = '<div class="admin-wrapper"></div>';
     var wrapper = wadah.querySelector('.admin-wrapper');
     if (halaman && typeof halaman.render === 'function') halaman.render(wrapper);
-    else renderHalamanAdminPlaceholder(wrapper, halaman ? halaman.judul : 'Halaman Admin');
+    else renderHalamanAdminPlaceholder(wrapper, halaman ? halaman.judul : 'Halaman');
   }
+
   else if (halaman && typeof halaman.render === 'function') { wadah.style.marginTop = ''; wadah.innerHTML = '<div class="container"></div>'; halaman.render(wadah.querySelector('.container')); }
   else { wadah.style.marginTop = ''; var j = halaman ? halaman.judul : 'Halaman Tidak Ditemukan'; wadah.innerHTML = '<div class="container">' + renderPlaceholder(j) + '</div>'; }
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2265,12 +2414,16 @@ function pasangEventScrollNavbar() {
   window.addEventListener('scroll', cekScroll, { passive: true });
   cekScroll();
 }
+
 function inisialisasi() {
   logDebug('ELKAROM v' + KONFIG.VERSI + ' dimulai.');
-  muatTemaTersimpan(); muatStateSidebar(); ambilSesiTersimpan(); perbaruiNavbar(); renderMenuSidebar();
+  muatTemaTersimpan(); muatStateSidebar(); ambilSesiTersimpan(); perbaruiNavbar();
   pasangEventNavbar(); pasangEventAdmin(); pasangEventScrollNavbar();
   window.addEventListener('hashchange', tanganiRute);
   tanganiRute();
+
+  // Render sidebar setelah STATE.pengguna dimuat (kalau ada sesi)
+  renderMenuSidebar();
 
   // Muat pengaturan publik (warna, nama, logo, tahun ajaran) — tanpa token
   muatPengaturanPublik();
@@ -2283,5 +2436,152 @@ function inisialisasi() {
   } else { panggilApi('ping', {}, 'GET').then(function (respon) { logDebug('Ping GAS:', respon); }); }
 }
 
+
+/* ============================================================
+ * DASHBOARD GURU
+ * ============================================================ */
+
+function renderDashboardGuru(wadah) {
+  if (!STATE.token || !STATE.pengguna) { window.location.hash = '#/login'; return; }
+  if (STATE.pengguna.role !== 'guru') { window.location.hash = ROUTE_DASHBOARD_BY_ROLE[STATE.pengguna.role] || '#/'; return; }
+
+  var namaLengkap = STATE.pengguna.nama_lengkap || STATE.pengguna.email || 'Ustadz';
+  var salam = ambilSalamWaktu();
+  var tanggal = ambilTanggalHariIni();
+
+  wadah.innerHTML = '' +
+    '<div class="admin-halaman-header">' +
+      '<div class="admin-halaman-judul-wrap">' +
+        '<h1 class="admin-halaman-judul">Dashboard Guru</h1>' +
+        '<p class="admin-halaman-deskripsi">Selamat datang di portal guru ELKAROM</p>' +
+      '</div>' +
+    '</div>' +
+    '<div class="dash-salam" style="background:linear-gradient(135deg,var(--warna-utama) 0%,var(--warna-utama-tua) 100%);color:white;border-radius:16px;padding:32px;margin-bottom:24px;position:relative;overflow:hidden">' +
+      '<div style="position:relative;z-index:1">' +
+        '<h1 style="font-size:24px;font-weight:800;color:white;margin-bottom:8px">' + escapeHtml(salam) + ', <span style="color:var(--warna-aksen)">' + escapeHtml(namaLengkap) + '</span></h1>' +
+        '<div style="font-size:14.5px;color:rgba(255,255,255,0.9);display:inline-flex;align-items:center;gap:8px">' + SVG_ICONS.calendar + '<span>' + escapeHtml(tanggal) + '</span></div>' +
+        '<div style="margin-top:12px;font-size:13.5px;color:rgba(255,255,255,0.85)">' + SVG_ICONS.graduation + ' <span>Anda login sebagai <strong>Guru</strong></span></div>' +
+      '</div>' +
+    '</div>' +
+    renderPapanInfoDashboard() +
+    '<div style="margin-bottom:24px">' +
+      '<div style="margin-bottom:16px"><h3 style="font-size:17px;font-weight:700">Aksi Cepat</h3></div>' +
+      '<div class="aksi-cepat-grid">' +
+        '<a class="aksi-cepat-item" href="#/guru/santri"><div class="aksi-cepat-icon">' + SVG_ICONS.users + '</div><span>Data Santri</span></a>' +
+        '<a class="aksi-cepat-item" href="#/guru/absensi"><div class="aksi-cepat-icon">' + SVG_ICONS.clipboard + '</div><span>Absensi</span></a>' +
+        '<a class="aksi-cepat-item" href="#/guru/nilai"><div class="aksi-cepat-icon">' + SVG_ICONS.trendingUp + '</div><span>Nilai</span></a>' +
+        '<a class="aksi-cepat-item" href="#/guru/jadwal"><div class="aksi-cepat-icon">' + SVG_ICONS.calendar + '</div><span>Jadwal</span></a>' +
+      '</div>' +
+    '</div>' +
+    '<div style="margin-bottom:24px">' +
+      '<div style="margin-bottom:16px"><h3 style="font-size:17px;font-weight:700">Statistik Santri</h3></div>' +
+      '<div class="stat-grid" id="guru-stat-grid">' +
+        '<div class="stat-card"><div class="stat-label">Total Santri</div><div class="stat-nilai" id="guru-stat-total"><span class="stat-loading"></span></div></div>' +
+        '<div class="stat-card stat-card-aksen"><div class="stat-label">Santri Aktif</div><div class="stat-nilai" id="guru-stat-aktif"><span class="stat-loading"></span></div></div>' +
+        '<div class="stat-card stat-card-abu"><div class="stat-label">Santri Putra</div><div class="stat-nilai" id="guru-stat-putra"><span class="stat-loading"></span></div></div>' +
+        '<div class="stat-card stat-card-merah"><div class="stat-label">Santri Putri</div><div class="stat-nilai" id="guru-stat-putri"><span class="stat-loading"></span></div></div>' +
+      '</div>' +
+    '</div>';
+
+  muatPapanInfoDashboard();
+
+  // Ambil statistik santri (read-only untuk guru)
+  panggilApi('statistikSiswa', {}, 'POST').then(function (respon) {
+    if (!respon || !respon.sukses || !respon.data) {
+      ['guru-stat-total','guru-stat-aktif','guru-stat-putra','guru-stat-putri'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = '-';
+      });
+      return;
+    }
+    var d = respon.data;
+    var map = {
+      'guru-stat-total': d.total || 0,
+      'guru-stat-aktif': d.aktif || 0,
+      'guru-stat-putra': d.putra || 0,
+      'guru-stat-putri': d.putri || 0
+    };
+    for (var k in map) {
+      if (map.hasOwnProperty(k)) {
+        var el = document.getElementById(k);
+        if (el) el.textContent = map[k];
+      }
+    }
+  });
+}
+
+/* ============================================================
+ * DASHBOARD WALI
+ * ============================================================ */
+
+function renderDashboardWali(wadah) {
+  if (!STATE.token || !STATE.pengguna) { window.location.hash = '#/login'; return; }
+  if (STATE.pengguna.role !== 'wali') { window.location.hash = ROUTE_DASHBOARD_BY_ROLE[STATE.pengguna.role] || '#/'; return; }
+
+  var namaLengkap = STATE.pengguna.nama_lengkap || STATE.pengguna.email || 'Bapak/Ibu';
+  var salam = ambilSalamWaktu();
+  var tanggal = ambilTanggalHariIni();
+
+  wadah.innerHTML = '' +
+    '<div class="admin-halaman-header">' +
+      '<div class="admin-halaman-judul-wrap">' +
+        '<h1 class="admin-halaman-judul">Dashboard Wali</h1>' +
+        '<p class="admin-halaman-deskripsi">Selamat datang di portal wali santri ELKAROM</p>' +
+      '</div>' +
+    '</div>' +
+    '<div class="dash-salam" style="background:linear-gradient(135deg,var(--warna-utama) 0%,var(--warna-utama-tua) 100%);color:white;border-radius:16px;padding:32px;margin-bottom:24px;position:relative;overflow:hidden">' +
+      '<div style="position:relative;z-index:1">' +
+        '<h1 style="font-size:24px;font-weight:800;color:white;margin-bottom:8px">' + escapeHtml(salam) + ', <span style="color:var(--warna-aksen)">' + escapeHtml(namaLengkap) + '</span></h1>' +
+        '<div style="font-size:14.5px;color:rgba(255,255,255,0.9);display:inline-flex;align-items:center;gap:8px">' + SVG_ICONS.calendar + '<span>' + escapeHtml(tanggal) + '</span></div>' +
+        '<div style="margin-top:12px;font-size:13.5px;color:rgba(255,255,255,0.85)">' + SVG_ICONS.users + ' <span>Anda login sebagai <strong>Wali Santri</strong></span></div>' +
+      '</div>' +
+    '</div>' +
+    renderPapanInfoDashboard() +
+    '<div class="form-card">' +
+      '<div class="form-card-judul">' + SVG_ICONS.users + '<span>Info Anak</span></div>' +
+      '<p class="teks-lembut" style="font-size:13.5px;line-height:1.7;margin:0">' +
+        'Fitur informasi detail santri (absensi, nilai, raport) akan tersedia setelah modul Data Wali dan Akademik dibangun. ' +
+        'Untuk saat ini, Anda bisa melihat papan informasi terbaru dari pesantren di atas.' +
+      '</p>' +
+    '</div>';
+
+  muatPapanInfoDashboard();
+}
+
+/* ============================================================
+ * ROUTER UNTUK GURU/WALI
+ * ============================================================ */
+
+/**
+ * Render halaman placeholder guru/wali.
+ */
+function renderPlaceholderGuruWali(wadah, judul) {
+  wadah.innerHTML = '' +
+    '<div class="admin-halaman-header">' +
+      '<div class="admin-halaman-judul-wrap">' +
+        '<h1 class="admin-halaman-judul">' + escapeHtml(judul) + '</h1>' +
+        '<p class="admin-halaman-deskripsi">Modul ini akan segera tersedia.</p>' +
+      '</div>' +
+    '</div>' +
+    '<div class="admin-placeholder">' +
+      '<div class="admin-placeholder-ikon">' + SVG_ICONS.info + '</div>' +
+      '<h2>' + escapeHtml(judul) + '</h2>' +
+      '<p>Halaman ini sedang dalam pengembangan.</p>' +
+      '<div class="admin-placeholder-badge">SEGERA HADIR</div>' +
+    '</div>';
+}
+
+/**
+ * Halaman Data Santri versi guru (read-only).
+ * Sementara reuse renderHalamanSantri, tapi tanpa tombol aksi.
+ * Untuk versi lengkap, tunggu modul Data Guru.
+ */
+function renderHalamanSantriGuru(wadah) {
+  // Reuse halaman santri admin, tapi guru tidak bisa tambah/edit/hapus
+  // Sederhana: pakai yang admin saja dulu
+  renderHalamanSantri(wadah);
+}
+
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', inisialisasi);
 else inisialisasi();
+
