@@ -1,15 +1,27 @@
+/*
+ * SIP - Sistem Informasi Pesantren ELKAROM
+ * File JS Eksternal - Versi 7.7.0
+ *
+ * Catatan v7.7.0 (hasil audit): kode dibungkus IIFE (tidak mencemari global);
+ * hanya fungsi yang dipakai atribut inline (onclick dll.) yang diekspor ke window.
+ * Debug log: localStorage.setItem('elkarom_debug','1') lalu muat ulang.
+ */
+(function () {
 var KONFIG = {
   URL_API_GAS: 'https://script.google.com/macros/s/AKfycby2rGM3Hw7WejiSZxCk43g553fy1Z7ShbuCvkorwlNDtlUui2bu9lOeq7zdXsEXBTI/exec',
   URL_BLOG: 'https://elkarom.blogspot.com',
   LABEL_ARTIKEL: 'Pena Pesantren',
   NAMA_APP: 'ELKAROM',
   SLOGAN: 'Mulia dengan Ilmu',
-  VERSI: '7.6.0',
+  VERSI: '7.7.0',
+  DEBUG: false,
+  TIMEOUT_API_MS: 45000,
   STORAGE_TOKEN: 'elkarom_token',
   STORAGE_PENGGUNA: 'elkarom_pengguna',
   STORAGE_TEMA: 'elkarom_tema',
   STORAGE_SIDEBAR: 'elkarom_sidebar_tertutup',
-  STORAGE_GRUP_TERBUKA: 'elkarom_grup_terbuka'
+  STORAGE_GRUP_TERBUKA: 'elkarom_grup_terbuka',
+  STORAGE_PENGATURAN: 'elkarom_pengaturan_cache'
 };
 
 var SVG_ICONS = {
@@ -105,7 +117,11 @@ var STATE = {
   filterPapanInfo: 'semua',
   searchPapanInfo: '',
   pengaturan: null,
-  grupPengaturanAktif: 'identitas'
+  pengaturanPublik: null,
+  grupPengaturanAktif: 'identitas',
+  judulHalaman: '',
+  loginGagal: 0,
+  loginTerkunciSampai: 0
 };
 
 var DATA_STATIS = {
@@ -226,7 +242,17 @@ var TAHUN_AJARAN_LIST = ['2026/2027', '2025/2026', '2024/2025', '2023/2024'];
 var TAHUN_AJARAN_AKTIF = '2026/2027';
 
 function escapeHtml(teks) { if (teks === null || teks === undefined) return ''; return String(teks).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
-function logDebug() { if (window.console && console.log) console.log.apply(console, arguments); }
+function logDebug() {
+  var aktif = KONFIG.DEBUG;
+  try { if (!aktif && localStorage.getItem('elkarom_debug') === '1') aktif = true; } catch (e) {}
+  if (aktif && window.console && console.log) console.log.apply(console, arguments);
+}
+/** Hanya izinkan URL http(s). Mencegah javascript: / data: masuk ke href. */
+function urlAman(url) {
+  if (!url) return '';
+  var u = String(url).trim();
+  return /^https?:\/\//i.test(u) ? u : '';
+}
 function ambilInisial(nama) {
   if (!nama) return '?';
   var bersih = String(nama).replace(/^(KH\.|Ust\.|Ustzh\.|H\.|Hj\.)\s*/i, '').trim();
@@ -299,6 +325,19 @@ function routeKhususWali(hash) {
   return hash === '#/wali' || hash.indexOf('#/wali/') === 0;
 }
 
+/** Rute yang butuh login: tepat '#/admin', '#/guru', '#/wali' atau turunannya (bukan '#/administrator'). */
+function adalahRuteTerlindungi(hash) {
+  hash = hash || '';
+  return hash === '#/admin' || hash.indexOf('#/admin/') === 0 || routeKhususGuru(hash) || routeKhususWali(hash);
+}
+
+/** Cocokkan rute menu: dashboard root hanya cocok persis, lainnya persis atau turunan (pakai '/'). */
+function rutecocok(hash, r) {
+  if (!r) return false;
+  if (r === '#/' || r === '#/admin' || r === '#/guru' || r === '#/wali') return hash === r;
+  return hash === r || hash.indexOf(r + '/') === 0;
+}
+
 /**
  * Redirect ke dashboard sesuai role saat ini.
  */
@@ -322,6 +361,26 @@ function ambilMenuSesuaiRole() {
 }
 
 
+/**
+ * Deteksi respons "sesi ditolak" dari server (token tidak valid / kedaluwarsa).
+ * Mengandalkan kode 401 atau pola pesan; sesuaikan dengan pesan LayananAuth.gs bila perlu.
+ */
+function sesiDitolakServer(action, hasil) {
+  if (!STATE.token) return false;
+  if (action === 'login' || action === 'logout' || action === 'verifikasiToken') return false;
+  if (!hasil || hasil.sukses) return false;
+  if (hasil.kode === 401) return true;
+  return /token (tidak valid|tidak ditemukan|kedaluwarsa|expired|invalid)|sesi (anda )?(telah |sudah )?(berakhir|habis|kedaluwarsa)/i.test(String(hasil.pesan || ''));
+}
+function tanganiSesiBerakhir() {
+  if (!STATE.token) return;
+  hapusSesi();
+  renderMenuSidebar();
+  tampilkanToast('Sesi Anda telah berakhir. Silakan login kembali.', 'peringatan', 'Sesi Berakhir');
+  if (adalahRuteTerlindungi(ambilHashSaatIni())) window.location.hash = '#/login';
+  else aturModeLayout();
+}
+
 function panggilApi(action, data, method) {
   var muatan = data || {};
   muatan.action = action;
@@ -330,16 +389,32 @@ function panggilApi(action, data, method) {
   var opsi;
   var url = KONFIG.URL_API_GAS;
   if (method === 'GET') {
+    // Token tidak pernah dikirim lewat URL (tercatat di log/riwayat).
     var params = [];
-    for (var k in muatan) { if (muatan.hasOwnProperty(k)) params.push(encodeURIComponent(k) + '=' + encodeURIComponent(muatan[k])); }
+    for (var k in muatan) {
+      if (!muatan.hasOwnProperty(k) || k === 'token') continue;
+      var nilai = (muatan[k] !== null && typeof muatan[k] === 'object') ? JSON.stringify(muatan[k]) : muatan[k];
+      params.push(encodeURIComponent(k) + '=' + encodeURIComponent(nilai));
+    }
     url = url + '?' + params.join('&');
     opsi = { method: 'GET', redirect: 'follow' };
   } else {
     opsi = { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(muatan) };
   }
-  return fetch(url, opsi).then(function (respon) { return respon.json(); }).catch(function (err) {
+  var pengendali = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  var timer = null;
+  if (pengendali) {
+    opsi.signal = pengendali.signal;
+    timer = setTimeout(function () { pengendali.abort(); }, KONFIG.TIMEOUT_API_MS);
+  }
+  return fetch(url, opsi).then(function (respon) { return respon.json(); }).then(function (hasil) {
+    if (timer) clearTimeout(timer);
+    try { if (sesiDitolakServer(action, hasil)) tanganiSesiBerakhir(); } catch (e) { logDebug('Gagal tangani sesi:', e); }
+    return hasil;
+  }).catch(function (err) {
+    if (timer) clearTimeout(timer);
     logDebug('API error:', err);
-    return { sukses: false, pesan: 'Tidak dapat terhubung ke server. Periksa koneksi Anda.', kode: 0 };
+    return { sukses: false, pesan: 'Tidak dapat terhubung ke server. Periksa koneksi Anda.', kode: 0, jaringan: true };
   });
 }
 
@@ -356,7 +431,7 @@ function ambilArtikelBlogger(jumlah) {
       var thumbnail = e.media$thumbnail ? e.media$thumbnail.url.replace(/\/s72-c\//, '/s400-c/') : '';
       var kategori = (e.category && e.category.length > 0) ? e.category[0].term : '';
       var ringkas = e.summary ? String(e.summary.$t).substring(0, 160) + '...' : '';
-      hasil.push({ judul: e.title.$t, link: linkArtikel, thumbnail: thumbnail, kategori: kategori, ringkas: ringkas, tanggal: e.published.$t, penulis: (e.author && e.author[0]) ? e.author[0].name.$t : 'Redaksi' });
+      hasil.push({ judul: e.title.$t, link: urlAman(linkArtikel), thumbnail: urlAman(thumbnail), kategori: kategori, ringkas: ringkas, tanggal: e.published.$t, penulis: (e.author && e.author[0]) ? e.author[0].name.$t : 'Redaksi' });
     }
     return hasil;
   }).catch(function (err) { logDebug('Gagal ambil artikel:', err); return []; });
@@ -374,11 +449,13 @@ function tampilkanToast(pesan, tipe, judul) {
   if (!wadah) return;
   var toast = document.createElement('div');
   toast.className = 'toast ' + tipe;
+  toast.setAttribute('role', tipe === 'gagal' ? 'alert' : 'status');
   toast.innerHTML = '<div class="toast-ikon">' + ikon + '</div><div class="toast-isi"><div class="toast-judul">' + escapeHtml(judul) + '</div><div class="toast-pesan">' + escapeHtml(pesan) + '</div></div>';
   wadah.appendChild(toast);
-  setTimeout(function () { toast.classList.add('keluar'); setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 300); }, 3500);
+  setTimeout(function () { toast.classList.add('keluar'); setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 300); }, (tipe === 'gagal' || tipe === 'peringatan') ? 6500 : 3500);
 }
 
+var _fokusSebelumModal = null;
 function bukaModal(judul, isiHtml, footerHtml, lebar) {
   var overlay = document.getElementById('modal-overlay');
   var judulEl = document.getElementById('modal-judul');
@@ -386,16 +463,27 @@ function bukaModal(judul, isiHtml, footerHtml, lebar) {
   var footerEl = document.getElementById('modal-footer');
   var boxEl = document.getElementById('modal-box');
   if (!overlay || !judulEl || !bodyEl) return;
+  if (!overlay.classList.contains('tampil')) _fokusSebelumModal = document.activeElement;
   judulEl.textContent = judul;
   bodyEl.innerHTML = isiHtml;
   if (footerHtml) { footerEl.innerHTML = footerHtml; footerEl.style.display = 'flex'; }
   else { footerEl.innerHTML = ''; footerEl.style.display = 'none'; }
   if (lebar === 'lg') boxEl.classList.add('modal-lg'); else boxEl.classList.remove('modal-lg');
+  boxEl.setAttribute('role', 'dialog');
+  boxEl.setAttribute('aria-modal', 'true');
+  boxEl.setAttribute('aria-labelledby', 'modal-judul');
   overlay.classList.add('tampil');
+  setTimeout(function () {
+    var fokus = boxEl.querySelector('.modal-body input:not([type="hidden"]), .modal-body select, .modal-body textarea') || boxEl.querySelector('.modal-footer button') || document.getElementById('modal-tutup');
+    if (fokus && fokus.focus) fokus.focus();
+  }, 50);
 }
 function tutupModal() {
   var overlay = document.getElementById('modal-overlay');
   if (overlay) overlay.classList.remove('tampil');
+  STATE.cropImage = null;
+  if (_fokusSebelumModal && _fokusSebelumModal.focus) { try { _fokusSebelumModal.focus(); } catch (e) {} }
+  _fokusSebelumModal = null;
 }
 
 function simpanSesi(token, pengguna) {
@@ -413,19 +501,26 @@ function hapusSesi() {
 function ambilSesiTersimpan() {
   try {
     var t = localStorage.getItem(KONFIG.STORAGE_TOKEN); var p = localStorage.getItem(KONFIG.STORAGE_PENGGUNA);
-    if (t && p) { STATE.token = t; STATE.pengguna = JSON.parse(p); return true; }
+    if (t && p) { var pg = JSON.parse(p); if (!pg || typeof pg !== 'object' || !ROUTE_DASHBOARD_BY_ROLE[pg.role]) { hapusSesi(); return false; } STATE.token = t; STATE.pengguna = pg; return true; }
   } catch (e) {}
   return false;
 }
-function terapkanTema(tema) {
+function terapkanTema(tema, tanpaSimpan) {
   if (tema === 'gelap') document.documentElement.setAttribute('data-tema', 'gelap');
   else document.documentElement.removeAttribute('data-tema');
-  try { localStorage.setItem(KONFIG.STORAGE_TEMA, tema); } catch (e) {}
+  if (!tanpaSimpan) { try { localStorage.setItem(KONFIG.STORAGE_TEMA, tema); } catch (e) {} }
   var ikonEl = document.getElementById('topbar-tema-ikon');
   if (ikonEl) ikonEl.innerHTML = tema === 'gelap' ? SVG_ICONS.sun : SVG_ICONS.moon;
+  terapkanWarnaPengaturan();
 }
 function toggleTema() { var sekarang = document.documentElement.getAttribute('data-tema') === 'gelap' ? 'gelap' : 'terang'; terapkanTema(sekarang === 'gelap' ? 'terang' : 'gelap'); }
-function muatTemaTersimpan() { try { terapkanTema(localStorage.getItem(KONFIG.STORAGE_TEMA) || 'terang'); } catch (e) { terapkanTema('terang'); } }
+function muatTemaTersimpan() {
+  var tersimpan = null;
+  try { tersimpan = localStorage.getItem(KONFIG.STORAGE_TEMA); } catch (e) {}
+  if (tersimpan === 'gelap' || tersimpan === 'terang') { terapkanTema(tersimpan); return; }
+  var osGelap = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  terapkanTema(osGelap ? 'gelap' : 'terang', true);
+}
 function muatStateSidebar() { try { if (localStorage.getItem(KONFIG.STORAGE_SIDEBAR) === 'ya') document.body.classList.add('sidebar-tertutup'); else document.body.classList.remove('sidebar-tertutup'); } catch (e) {} }
 function simpanStateSidebar(tertutup) { try { localStorage.setItem(KONFIG.STORAGE_SIDEBAR, tertutup ? 'ya' : 'tidak'); } catch (e) {} }
 
@@ -490,7 +585,7 @@ function perbaruiTopbarAdmin() {
 
 function aturModeLayout() {
   var hash = STATE.halamanAktif || '#/';
-  var diAreaLogin = hash.indexOf('#/admin') === 0 || hash.indexOf('#/guru') === 0 || hash.indexOf('#/wali') === 0;
+  var diAreaLogin = adalahRuteTerlindungi(hash);
   var diAreaLoginDanMasuk = diAreaLogin && STATE.token && STATE.pengguna;
   var body = document.body;
   if (diAreaLoginDanMasuk) {
@@ -509,16 +604,16 @@ function perbaruiMenuSidebarAktif(hash) {
   var links = document.querySelectorAll('#sidebar-menu .sidebar-link');
   for (var i = 0; i < links.length; i++) {
     var r = links[i].getAttribute('data-route');
-    if (hash === r || (r !== '#/admin' && hash.indexOf(r) === 0)) links[i].classList.add('aktif');
-    else links[i].classList.remove('aktif');
+    if (rutecocok(hash, r)) { links[i].classList.add('aktif'); links[i].setAttribute('aria-current', 'page'); }
+    else { links[i].classList.remove('aktif'); links[i].removeAttribute('aria-current'); }
   }
 }
 function perbaruiBottomNavAktif(hash) {
   var items = document.querySelectorAll('#bottom-nav-admin [data-route-admin]');
   for (var i = 0; i < items.length; i++) {
     var route = items[i].getAttribute('data-route-admin');
-    if (hash === route || (route !== '#/admin' && hash.indexOf(route) === 0)) items[i].classList.add('aktif');
-    else items[i].classList.remove('aktif');
+    if (rutecocok(hash, route)) { items[i].classList.add('aktif'); items[i].setAttribute('aria-current', 'page'); }
+    else { items[i].classList.remove('aktif'); items[i].removeAttribute('aria-current'); }
   }
 }
 function renderMenuSidebar() {
@@ -533,7 +628,7 @@ function renderMenuSidebar() {
     var tetapTerbuka = grup.tetap_terbuka === true;
     var terbuka = tetapTerbuka || grupTerbuka.indexOf(grupId) > -1;
     html += '<div class="sidebar-grup' + (terbuka ? ' terbuka' : '') + '" data-grup-id="' + grupId + '" data-tetap="' + (tetapTerbuka ? '1' : '0') + '">';
-    html += '<div class="sidebar-grup-judul" onclick="toggleGrupSidebar(\'' + grupId + '\')"><span>' + escapeHtml(grup.grup) + '</span>' + SVG_ICONS.chevronDown + '</div>';
+    html += '<div class="sidebar-grup-judul" role="button" tabindex="0" aria-expanded="' + (terbuka ? 'true' : 'false') + '" data-grup-toggle="' + grupId + '"><span>' + escapeHtml(grup.grup) + '</span>' + SVG_ICONS.chevronDown + '</div>';
     html += '<div class="sidebar-grup-item">';
     grup.item.forEach(function (item) {
       var ikon = SVG_ICONS[item.icon] || SVG_ICONS.infoCircle;
@@ -542,6 +637,7 @@ function renderMenuSidebar() {
     html += '</div></div>';
   });
   wadah.innerHTML = html;
+  if (STATE.halamanAktif) perbaruiMenuSidebarAktif(STATE.halamanAktif);
 }
 function toggleGrupSidebar(grupId) {
   var grup = document.querySelector('.sidebar-grup[data-grup-id="' + grupId + '"]');
@@ -558,6 +654,14 @@ function toggleGrupSidebar(grupId) {
   for (var k = 0; k < grupTetap.length; k++) daftarTerbuka.push(grupTetap[k].getAttribute('data-grup-id'));
   if (!sedangTerbuka) { grup.classList.add('terbuka'); daftarTerbuka.push(grupId); }
   simpanGrupTerbuka(daftarTerbuka);
+  sinkronAriaGrup();
+}
+function sinkronAriaGrup() {
+  var daftar = document.querySelectorAll('#sidebar-menu .sidebar-grup');
+  for (var i = 0; i < daftar.length; i++) {
+    var j = daftar[i].querySelector('.sidebar-grup-judul');
+    if (j) j.setAttribute('aria-expanded', daftar[i].classList.contains('terbuka') ? 'true' : 'false');
+  }
 }
 function toggleSidebar() {
   if (window.innerWidth < 1024) { document.body.classList.toggle('sidebar-mobile-terbuka'); }
@@ -568,8 +672,125 @@ function toggleSidebar() {
   }
 }
 function tutupSidebarMobile() { document.body.classList.remove('sidebar-mobile-terbuka'); }
-function bukaSearch() { var overlay = document.getElementById('search-overlay'); if (!overlay) return; overlay.classList.add('tampil'); var input = document.getElementById('search-input'); if (input) { input.value = ''; setTimeout(function () { input.focus(); }, 100); } }
-function tutupSearch() { var overlay = document.getElementById('search-overlay'); if (overlay) overlay.classList.remove('tampil'); }
+function bukaSearch() {
+  if (!STATE.token || !STATE.pengguna) return;
+  var overlay = document.getElementById('search-overlay');
+  if (!overlay) return;
+  if (!overlay.classList.contains('tampil')) _fokusSebelumSearch = document.activeElement;
+  overlay.classList.add('tampil');
+  var input = document.getElementById('search-input');
+  if (input) { input.value = ''; cariGlobal(''); setTimeout(function () { input.focus(); }, 100); }
+}
+var _fokusSebelumSearch = null;
+function tutupSearch() {
+  var overlay = document.getElementById('search-overlay');
+  if (!overlay) return;
+  var tadiTerbuka = overlay.classList.contains('tampil');
+  overlay.classList.remove('tampil');
+  if (tadiTerbuka && _fokusSebelumSearch && _fokusSebelumSearch.focus) { try { _fokusSebelumSearch.focus(); } catch (e) {} }
+  _fokusSebelumSearch = null;
+}
+function ambilDaftarMenuDatar() {
+  var hasil = [];
+  ambilMenuSesuaiRole().forEach(function (g) {
+    (g.item || []).forEach(function (it) { hasil.push({ label: it.label, grup: g.grup, route: it.route }); });
+  });
+  return hasil;
+}
+function cariGlobal(kata) {
+  var wadah = document.getElementById('search-hasil');
+  if (!wadah) return;
+  var q = String(kata || '').trim().toLowerCase();
+  if (!q) { wadah.innerHTML = '<div class="search-hasil-kosong">Ketik untuk mencari halaman atau santri...</div>'; return; }
+  var html = '';
+  var halaman = ambilDaftarMenuDatar().filter(function (m) {
+    return String(m.label).toLowerCase().indexOf(q) > -1 || String(m.grup).toLowerCase().indexOf(q) > -1;
+  }).slice(0, 6);
+  if (halaman.length) {
+    html += '<div class="search-hasil-label">Halaman</div>';
+    halaman.forEach(function (m) {
+      html += '<a class="search-hasil-item" href="' + escapeHtml(m.route) + '" style="display:block;padding:10px 12px"><span class="search-hasil-judul">' + escapeHtml(m.label) + '</span> <span class="search-hasil-sub">' + escapeHtml(m.grup) + '</span></a>';
+    });
+  }
+  if (ambilRoleSaatIni() === 'admin' && STATE.daftarSantri && STATE.daftarSantri.length) {
+    var santri = STATE.daftarSantri.filter(function (x) {
+      return String(x.nama_lengkap || '').toLowerCase().indexOf(q) > -1 || String(x.nis || '').toLowerCase().indexOf(q) > -1 || String(x.nisn || '').toLowerCase().indexOf(q) > -1;
+    }).slice(0, 8);
+    if (santri.length) {
+      html += '<div class="search-hasil-label">Santri</div>';
+      santri.forEach(function (x) {
+        html += '<a class="search-hasil-item" href="#/admin/profil-santri/' + encodeURIComponent(x.id) + '" style="display:block;padding:10px 12px"><span class="search-hasil-judul">' + escapeHtml(x.nama_lengkap) + '</span> <span class="search-hasil-sub">' + escapeHtml(x.nis || '') + '</span></a>';
+      });
+    }
+  } else if (ambilRoleSaatIni() === 'admin') {
+    html += '<div class="search-hasil-kosong">Buka halaman Data Santri terlebih dahulu agar santri bisa dicari.</div>';
+  }
+  if (!html) html = '<div class="search-hasil-kosong">Tidak ada hasil untuk "' + escapeHtml(kata) + '".</div>';
+  wadah.innerHTML = html;
+}
+function pasangEventSearch() {
+  var input = document.getElementById('search-input');
+  var hasil = document.getElementById('search-hasil');
+  var overlay = document.getElementById('search-overlay');
+  var timer = null;
+  if (overlay) { overlay.setAttribute('role', 'dialog'); overlay.setAttribute('aria-modal', 'true'); overlay.setAttribute('aria-label', 'Pencarian'); }
+  if (input) {
+    input.setAttribute('aria-label', 'Cari halaman atau santri');
+    input.setAttribute('placeholder', 'Cari halaman atau santri...');
+    input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(function () { cariGlobal(input.value); }, 120); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      var a = hasil && hasil.querySelector('a');
+      if (a) { e.preventDefault(); window.location.hash = a.getAttribute('href'); tutupSearch(); }
+    });
+  }
+  if (hasil) hasil.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('a')) tutupSearch(); });
+}
+function pasangEventSidebarGrup() {
+  var menu = document.getElementById('sidebar-menu');
+  if (!menu) return;
+  menu.addEventListener('click', function (e) {
+    var j = e.target.closest && e.target.closest('[data-grup-toggle]');
+    if (j) toggleGrupSidebar(j.getAttribute('data-grup-toggle'));
+  });
+  menu.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var j = e.target.closest && e.target.closest('[data-grup-toggle]');
+    if (j) { e.preventDefault(); toggleGrupSidebar(j.getAttribute('data-grup-toggle')); }
+  });
+}
+function perangkapFokus(e) {
+  var modal = document.getElementById('modal-overlay');
+  var search = document.getElementById('search-overlay');
+  var wadah = null;
+  if (modal && modal.classList.contains('tampil')) wadah = document.getElementById('modal-box');
+  else if (search && search.classList.contains('tampil')) wadah = search.querySelector('.search-box');
+  if (!wadah) return;
+  var daftar = wadah.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+  var terlihat = [];
+  for (var i = 0; i < daftar.length; i++) { if (daftar[i].offsetParent !== null || daftar[i] === document.activeElement) terlihat.push(daftar[i]); }
+  if (!terlihat.length) return;
+  var pertama = terlihat[0], terakhir = terlihat[terlihat.length - 1];
+  if (e.shiftKey && (document.activeElement === pertama || !wadah.contains(document.activeElement))) { e.preventDefault(); terakhir.focus(); }
+  else if (!e.shiftKey && (document.activeElement === terakhir || !wadah.contains(document.activeElement))) { e.preventDefault(); pertama.focus(); }
+}
+function tanganiKeyboardGlobal(e) {
+  var tombol = e.key;
+  if (tombol === 'Escape') {
+    tutupSearch();
+    tutupDrawer();
+    var dd = document.querySelectorAll('.navbar-user-dropdown, .topbar-dropdown, .dropdown-filter-menu');
+    for (var i = 0; i < dd.length; i++) dd[i].classList.remove('tampil');
+    var modal = document.getElementById('modal-overlay');
+    if (modal && modal.classList.contains('tampil')) { if (STATE.cropImage) tutupCrop(); else tutupModal(); }
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && tombol && String(tombol).toLowerCase() === 'k') {
+    if (STATE.token && STATE.pengguna) { e.preventDefault(); bukaSearch(); }
+    return;
+  }
+  if (tombol === 'Tab') perangkapFokus(e);
+}
 
 /* ============================================================
  * ROLE GUARD
@@ -821,6 +1042,17 @@ function aksiCetakTerpilih() {
   if (terpilih.length === 0) { tampilkanToast('Pilih santri terlebih dahulu.', 'peringatan', 'Perhatian'); return; }
   tampilkanToast('Fitur cetak KTS untuk ' + terpilih.length + ' santri terpilih akan segera tersedia.', 'info', 'Segera');
 }
+/** Netralkan formula spreadsheet (=, +, -, @) pada sel teks bebas. */
+function amankanSel(v) {
+  var t = (v === null || v === undefined) ? '' : String(v);
+  return /^[=+\-@\t\r]/.test(t) ? "'" + t : t;
+}
+/** Kolom identitas/nomor: dipertahankan sebagai teks agar angka nol di depan tidak hilang. */
+function selTeksCsv(v) {
+  var t = (v === null || v === undefined) ? '' : String(v);
+  if (/^\+?[0-9][0-9\s\-]*$/.test(t)) return '="' + t + '"';
+  return amankanSel(t);
+}
 function exportCSV() {
   if (!STATE.daftarSantri || STATE.daftarSantri.length === 0) { tampilkanToast('Tidak ada data untuk diexport.', 'peringatan', 'Perhatian'); return; }
   var daftar = sortSantri(filterSantri(STATE.daftarSantri));
@@ -828,23 +1060,24 @@ function exportCSV() {
   var baris = [header.join(';')];
   daftar.forEach(function (s) {
     var r = [
-      s.nis || '', s.nisn || '', s.nama_lengkap || '', labelJenisKelamin(s.jenis_kelamin) || '',
-      s.tempat_lahir || '', s.tanggal_lahir || '', s.alamat || '', s.no_hp || '',
-      s.nama_ayah || '', s.nama_ibu || '', s.kelas_id || '', s.tahun_masuk || '', s.status || ''
+      selTeksCsv(s.nis), selTeksCsv(s.nisn), amankanSel(s.nama_lengkap), amankanSel(labelJenisKelamin(s.jenis_kelamin)),
+      amankanSel(s.tempat_lahir), amankanSel(s.tanggal_lahir), amankanSel(s.alamat), selTeksCsv(s.no_hp),
+      amankanSel(s.nama_ayah), amankanSel(s.nama_ibu), amankanSel(s.kelas_id), amankanSel(s.tahun_masuk), amankanSel(s.status)
     ];
     baris.push(r.map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(';'));
   });
-  var csv = '\ufeff' + baris.join('\n');
+  var csv = '\ufeff' + baris.join('\r\n');
   unduhFile(csv, 'data-santri-' + ambilTimestampFile() + '.csv', 'text/csv;charset=utf-8');
   tampilkanToast('Data berhasil diexport ke CSV.', 'sukses', 'Export Berhasil');
 }
+function selXls(v) { return escapeHtml(amankanSel(v)); }
 function exportExcel() {
   if (!STATE.daftarSantri || STATE.daftarSantri.length === 0) { tampilkanToast('Tidak ada data untuk diexport.', 'peringatan', 'Perhatian'); return; }
   var daftar = sortSantri(filterSantri(STATE.daftarSantri));
   var html = '<html><head><meta charset="utf-8"></head><body><table border="1">';
   html += '<thead><tr><th>NIS</th><th>NISN</th><th>Nama Lengkap</th><th>JK</th><th>Tempat Lahir</th><th>Tanggal Lahir</th><th>Alamat</th><th>No HP</th><th>Nama Ayah</th><th>Nama Ibu</th><th>Kelas</th><th>Tahun Masuk</th><th>Status</th></tr></thead><tbody>';
   daftar.forEach(function (s) {
-    html += '<tr><td>' + escapeHtml(s.nis) + '</td><td>' + escapeHtml(s.nisn) + '</td><td>' + escapeHtml(s.nama_lengkap) + '</td><td>' + escapeHtml(labelJenisKelamin(s.jenis_kelamin)) + '</td><td>' + escapeHtml(s.tempat_lahir) + '</td><td>' + escapeHtml(s.tanggal_lahir) + '</td><td>' + escapeHtml(s.alamat) + '</td><td>' + escapeHtml(s.no_hp) + '</td><td>' + escapeHtml(s.nama_ayah) + '</td><td>' + escapeHtml(s.nama_ibu) + '</td><td>' + escapeHtml(s.kelas_id) + '</td><td>' + escapeHtml(s.tahun_masuk) + '</td><td>' + escapeHtml(s.status) + '</td></tr>';
+    html += '<tr><td style="mso-number-format:\'\\@\'">' + selXls(s.nis) + '</td><td style="mso-number-format:\'\\@\'">' + selXls(s.nisn) + '</td><td>' + selXls(s.nama_lengkap) + '</td><td>' + selXls(labelJenisKelamin(s.jenis_kelamin)) + '</td><td>' + selXls(s.tempat_lahir) + '</td><td>' + selXls(s.tanggal_lahir) + '</td><td>' + selXls(s.alamat) + '</td><td style="mso-number-format:\'\\@\'">' + selXls(s.no_hp) + '</td><td>' + selXls(s.nama_ayah) + '</td><td>' + selXls(s.nama_ibu) + '</td><td>' + selXls(s.kelas_id) + '</td><td>' + selXls(s.tahun_masuk) + '</td><td>' + selXls(s.status) + '</td></tr>';
   });
   html += '</tbody></table></body></html>';
   unduhFile(html, 'data-santri-' + ambilTimestampFile() + '.xls', 'application/vnd.ms-excel');
@@ -1130,9 +1363,11 @@ function pilihFileFoto() { var inp = document.getElementById('input-foto'); if (
 function onFileFotoDipilih(e) {
   var file = e.target.files && e.target.files[0];
   if (!file) return;
-  if (file.size > 2 * 1024 * 1024) { tampilkanToast('Ukuran file maksimal 2 MB.', 'gagal'); return; }
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { tampilkanToast('Format file harus JPG, PNG, atau WebP.', 'gagal'); e.target.value = ''; return; }
+  if (file.size > 2 * 1024 * 1024) { tampilkanToast('Ukuran file maksimal 2 MB.', 'gagal'); e.target.value = ''; return; }
   var reader = new FileReader();
-  reader.onload = function (ev) { bukaCropModal(ev.target.result); };
+  reader.onload = function (ev) { bukaCropModal(ev.target.result); e.target.value = ''; };
+  reader.onerror = function () { tampilkanToast('File tidak dapat dibaca.', 'gagal'); };
   reader.readAsDataURL(file);
 }
 
@@ -1142,29 +1377,37 @@ function bukaCropModal(dataUrl) {
     STATE.cropImage = img;
     STATE.cropX = 0;
     STATE.cropY = 0;
-    var lebarArea = 360;
-    var tinggiArea = 480;
-    var skalaAwal = Math.min(lebarArea / img.width, tinggiArea / img.height);
-    if (skalaAwal > 1) skalaAwal = 1;
-    STATE.cropSkala = skalaAwal;
+    STATE.cropSkala = hitungSkalaAwalCrop(img);
 
     var html = '' +
       '<div class="crop-area" id="crop-area"><canvas id="crop-canvas"></canvas><div class="crop-overlay"><div class="crop-frame"></div></div></div>' +
       '<div class="crop-info">Geser foto untuk atur posisi. Gunakan slider di bawah untuk memperbesar/memperkecil.</div>' +
       '<div class="crop-zoom-controls">' +
         '<button class="crop-zoom-tombol" onclick="zoomOutCrop()" type="button" title="Perkecil">-</button>' +
-        '<input class="crop-zoom-slider" id="crop-zoom-slider" max="3" min="0.2" step="0.05" type="range" value="' + STATE.cropSkala + '" oninput="onZoomSliderChange(this.value)"/>' +
+        '<input class="crop-zoom-slider" id="crop-zoom-slider" max="3" min="0.05" step="0.05" type="range" value="' + STATE.cropSkala + '" oninput="onZoomSliderChange(this.value)"/>' +
         '<button class="crop-zoom-tombol" onclick="zoomInCrop()" type="button" title="Perbesar">+</button>' +
         '<span class="crop-zoom-label" id="crop-zoom-label">' + Math.round(STATE.cropSkala * 100) + '%</span>' +
       '</div>' +
       '<div style="text-align:center;margin-top:12px"><button class="btn btn-ghost btn-sm" onclick="resetCrop()" type="button">' + SVG_ICONS.rotate + '<span>Reset</span></button></div>';
     var footer = '<button class="btn btn-ghost" onclick="tutupCrop()" type="button">Batal</button><button class="btn btn-utama" onclick="simpanCrop()" type="button">Terapkan</button>';
     bukaModal('Atur Posisi Foto', html, footer, 'lg');
+    STATE.cropSkala = hitungSkalaAwalCrop(img);
+    perbaruiSliderCrop();
     setTimeout(gambarCrop, 50);
     pasangEventCrop();
     pasangEventCropScroll();
   };
+  img.onerror = function () { tampilkanToast('File gambar tidak dapat dibaca atau rusak.', 'gagal'); };
   img.src = dataUrl;
+}
+
+/** Skala awal agar seluruh gambar muat di area crop (ukuran aktual area, bukan angka tetap). */
+function hitungSkalaAwalCrop(img) {
+  var area = document.getElementById('crop-area');
+  var lebar = (area && area.clientWidth) ? area.clientWidth : 360;
+  var tinggi = (area && area.clientHeight) ? area.clientHeight : 480;
+  var skala = Math.min(lebar / img.width, tinggi / img.height);
+  return skala > 1 ? 1 : skala;
 }
 
 function pasangEventCropScroll() {
@@ -1184,7 +1427,7 @@ function zoomInCrop() {
 }
 
 function zoomOutCrop() {
-  STATE.cropSkala = Math.max(STATE.cropSkala / 1.1, 0.2);
+  STATE.cropSkala = Math.max(STATE.cropSkala / 1.1, 0.05);
   perbaruiSliderCrop();
   gambarCrop();
 }
@@ -1247,11 +1490,7 @@ function resetCrop() {
   STATE.cropX = 0;
   STATE.cropY = 0;
   if (STATE.cropImage) {
-    var lebarArea = 360;
-    var tinggiArea = 480;
-    var skalaAwal = Math.min(lebarArea / STATE.cropImage.width, tinggiArea / STATE.cropImage.height);
-    if (skalaAwal > 1) skalaAwal = 1;
-    STATE.cropSkala = skalaAwal;
+    STATE.cropSkala = hitungSkalaAwalCrop(STATE.cropImage);
   } else {
     STATE.cropSkala = 1;
   }
@@ -1310,7 +1549,7 @@ function submitFormSantri(e) {
   var tombol = document.getElementById('tombol-simpan-santri');
   if (tombol) { tombol.disabled = true; tombol.innerHTML = 'Menyimpan...'; }
   if (croppedData) {
-    var namaFile = 'santri-' + (document.getElementById('nama_lengkap').value || 'baru');
+    var namaFile = 'santri-' + (String(document.getElementById('nama_lengkap').value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').substring(0, 40) || 'baru');
     panggilApi('uploadFotoSantri', { base64Data: croppedData, namaFile: namaFile }, 'POST').then(function (resUpload) {
       if (resUpload && resUpload.sukses && resUpload.data && resUpload.data.url) {
         prosesSimpanSantri(idEdit, adalahEdit, resUpload.data.url, tombol);
@@ -1322,6 +1561,22 @@ function submitFormSantri(e) {
   } else {
     prosesSimpanSantri(idEdit, adalahEdit, fotoUrlLama, tombol);
   }
+}
+/** Validasi ringan di klien; validasi final tetap di server. Mengembalikan teks galat atau ''. */
+function validasiDataSantri(d) {
+  var tahunIni = new Date().getFullYear();
+  var emailOk = function (v) { return !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); };
+  var hpOk = function (v) { return !v || /^[0-9+\-\s()]{8,20}$/.test(v); };
+  var nikOk = function (v) { return !v || /^\d{16}$/.test(String(v).replace(/\s/g, '')); };
+  if (d.nis && !/^[A-Za-z0-9\-\/.]{3,30}$/.test(d.nis)) return 'Format NIS tidak valid (huruf/angka, boleh tanda hubung).';
+  if (!/^\d{4}$/.test(d.tahun_masuk) || +d.tahun_masuk < 2000 || +d.tahun_masuk > tahunIni + 1) return 'Tahun masuk harus 4 digit (2000 - ' + (tahunIni + 1) + ').';
+  if (d.tahun_selesai && (!/^\d{4}$/.test(d.tahun_selesai) || +d.tahun_selesai < +d.tahun_masuk)) return 'Tahun selesai harus 4 digit dan tidak lebih awal dari tahun masuk.';
+  if (d.tanggal_lahir && d.tanggal_lahir > new Date().toISOString().slice(0, 10)) return 'Tanggal lahir tidak boleh di masa depan.';
+  if (d.nisn && !/^\d{10}$/.test(d.nisn)) return 'NISN harus 10 digit angka.';
+  if (!hpOk(d.no_hp) || !hpOk(d.ayah.no_hp) || !hpOk(d.ibu.no_hp)) return 'Nomor HP tidak valid (8-20 karakter, angka/+/-).';
+  if (!nikOk(d.ayah.nik) || !nikOk(d.ibu.nik)) return 'NIK harus 16 digit angka.';
+  if (!emailOk(d.ayah.email) || !emailOk(d.ibu.email)) return 'Format email orang tua tidak valid.';
+  return '';
 }
 function ambilNilai(id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }
 function prosesSimpanSantri(idEdit, adalahEdit, fotoUrl, tombol) {
@@ -1339,7 +1594,13 @@ function prosesSimpanSantri(idEdit, adalahEdit, fotoUrl, tombol) {
   if (!data.nama_ayah) { tampilkanToast('Nama ayah wajib diisi.', 'gagal'); if (tombol) { tombol.disabled = false; tombol.innerHTML = adalahEdit ? 'Simpan Perubahan' : 'Simpan Santri'; } return; }
   if (!data.nama_ibu) { tampilkanToast('Nama ibu wajib diisi.', 'gagal'); if (tombol) { tombol.disabled = false; tombol.innerHTML = adalahEdit ? 'Simpan Perubahan' : 'Simpan Santri'; } return; }
   if (!data.tahun_masuk) { tampilkanToast('Tahun masuk wajib diisi.', 'gagal'); if (tombol) { tombol.disabled = false; tombol.innerHTML = adalahEdit ? 'Simpan Perubahan' : 'Simpan Santri'; } return; }
-  if (!adalahEdit && !data.nis) { data.nis = 'SEMENTARA-' + Date.now(); }
+  // NIS kosong dikirim apa adanya: server (GAS) yang membuat nomor berurutan (tahun-urutan) di dalam lock.
+  var galatValidasi = validasiDataSantri(data);
+  if (galatValidasi) {
+    if (tombol) { tombol.disabled = false; tombol.innerHTML = adalahEdit ? 'Simpan Perubahan' : 'Simpan Santri'; }
+    tampilkanToast(galatValidasi, 'gagal', 'Data Belum Valid');
+    return;
+  }
   var aksi = adalahEdit ? 'perbaruiSiswa' : 'tambahSiswa';
   var muatan = adalahEdit ? { id: idEdit, data: data } : { data: data };
   panggilApi(aksi, muatan, 'POST').then(function (res) {
@@ -1415,11 +1676,7 @@ function terapkanPengaturanKeUI(pengaturan) {
   if (!pengaturan) return;
 
   // ----- Warna -----
-  var tampilan = pengaturan.tampilan || {};
-  var root = document.documentElement;
-  if (tampilan.warna_utama)    root.style.setProperty('--warna-utama', tampilan.warna_utama);
-  if (tampilan.warna_sekunder) root.style.setProperty('--warna-sekunder', tampilan.warna_sekunder);
-  if (tampilan.warna_aksen)    root.style.setProperty('--warna-aksen', tampilan.warna_aksen);
+  terapkanWarnaPengaturan();
 
   // ----- Identitas -----
   var identitas = pengaturan.identitas || {};
@@ -1428,12 +1685,28 @@ function terapkanPengaturanKeUI(pengaturan) {
     for (var i = 0; i < semuaNavNama.length; i++) {
       semuaNavNama[i].textContent = identitas.nama_pesantren;
     }
-    document.title = identitas.nama_pesantren + ' - SIP';
+    perbaruiJudulHalaman();
   }
-  if (identitas.logo_url) {
+  if (identitas.logo_url && urlAman(identitas.logo_url)) {
     var semuaLogo = document.querySelectorAll('.navbar-logo, .login-panel-logo');
     for (var j = 0; j < semuaLogo.length; j++) {
-      semuaLogo[j].innerHTML = '<img alt="Logo" src="' + escapeHtml(identitas.logo_url) + '" style="width:100%;height:100%;object-fit:contain;border-radius:8px">';
+      semuaLogo[j].innerHTML = '<img alt="Logo" src="' + escapeHtml(urlAman(identitas.logo_url)) + '" style="width:100%;height:100%;object-fit:contain;border-radius:8px">';
+    }
+  }
+
+  // ----- Kontak footer (opsional, bila kuncinya tersedia) -----
+  var kontakEl = document.getElementById('footer-kontak');
+  if (kontakEl) {
+    var wa = (pengaturan.whatsapp || {});
+    var alamat = identitas.alamat || identitas.alamat_pesantren || '';
+    var nomorWa = identitas.no_whatsapp || identitas.whatsapp || wa.nomor_admin || wa.nomor || '';
+    var surel = identitas.email || identitas.email_pesantren || '';
+    if (alamat || nomorWa || surel) {
+      var baris = [];
+      if (alamat) baris.push('Alamat: ' + escapeHtml(alamat));
+      if (nomorWa) baris.push('WhatsApp: ' + escapeHtml(nomorWa));
+      if (surel) baris.push('Email: ' + escapeHtml(surel));
+      kontakEl.innerHTML = baris.join('<br>');
     }
   }
 
@@ -1453,7 +1726,9 @@ function terapkanPengaturanKeUI(pengaturan) {
 function muatPengaturanPublik() {
   return panggilApi('ambilPengaturanPublik', {}, 'POST').then(function (res) {
     if (res && res.sukses && res.data) {
-      STATE.pengaturan = res.data;
+      // Disimpan terpisah: STATE.pengaturan dipakai halaman Pengaturan admin (struktur per-grup).
+      STATE.pengaturanPublik = res.data;
+      simpanCachePengaturan(res.data);
       terapkanPengaturanKeUI(res.data);
       return res.data;
     }
@@ -2183,6 +2458,7 @@ function sembunyikanErrorLogin() { var kotakError = document.getElementById('err
 function aturLoadingTombol(loading) { var tombol = document.getElementById('tombol-masuk'); var teks = document.getElementById('tombol-masuk-teks'); var l = document.getElementById('tombol-masuk-loading'); if (!tombol || !teks || !l) return; if (loading) { tombol.disabled = true; teks.style.display = 'none'; l.style.display = 'inline-flex'; } else { tombol.disabled = false; teks.style.display = ''; l.style.display = 'none'; } }
 function prosesLogin(e) {
   if (e) e.preventDefault(); sembunyikanErrorLogin();
+  if (STATE.loginTerkunciSampai && Date.now() < STATE.loginTerkunciSampai) { tampilkanErrorLogin('Terlalu banyak percobaan. Coba lagi dalam ' + Math.ceil((STATE.loginTerkunciSampai - Date.now()) / 1000) + ' detik.'); return; }
   var inputEmail = document.getElementById('input-email'); var inputPassword = document.getElementById('input-password');
   if (!inputEmail || !inputPassword) return;
   var email = String(inputEmail.value || '').trim(); var password = String(inputPassword.value || '');
@@ -2191,7 +2467,13 @@ function prosesLogin(e) {
   aturLoadingTombol(true);
   panggilApi('login', { email: email, password: password }, 'POST').then(function (respon) {
     aturLoadingTombol(false);
-    if (!respon || !respon.sukses) { tampilkanErrorLogin((respon && respon.pesan) ? respon.pesan : 'Login gagal.'); return; }
+    if (!respon || !respon.sukses) {
+      if (!(respon && respon.jaringan)) { STATE.loginGagal++; if (STATE.loginGagal >= 5) { STATE.loginTerkunciSampai = Date.now() + 30000; STATE.loginGagal = 0; } }
+      inputPassword.value = '';
+      tampilkanErrorLogin((respon && respon.pesan) ? respon.pesan : 'Login gagal.');
+      return;
+    }
+    STATE.loginGagal = 0;
     var dataLogin = respon.data || {};
     if (!dataLogin.token || !dataLogin.pengguna) { tampilkanErrorLogin('Respons server tidak lengkap.'); return; }
     simpanSesi(dataLogin.token, dataLogin.pengguna);
@@ -2370,8 +2652,9 @@ var DAFTAR_HALAMAN = {
 function ambilHashSaatIni() { return window.location.hash || '#/'; }
 function renderPlaceholder(judul) { return '<div class="halaman-placeholder">' + SVG_ICONS.info + '<h2>' + escapeHtml(judul) + '</h2><p class="teks-lembut mt-2">Halaman ini sedang dalam pengembangan.</p></div>'; }
 
-function tanganiRute() {
-  var hash = ambilHashSaatIni();
+function tanganiRuteInti() {
+  var hash = ambilHashSaatIni().split('?')[0];
+  if (hash.length > 2 && hash.charAt(hash.length - 1) === '/') hash = hash.slice(0, -1);
   STATE.halamanAktif = hash;
   var wadah = document.getElementById('app');
   if (!wadah) return;
@@ -2384,14 +2667,16 @@ function tanganiRute() {
   else if (hash.indexOf('#/admin/pengumuman/lihat/') === 0) { var idLihatPgm = hash.replace('#/admin/pengumuman/lihat/', ''); ruteDinamis = { render: function (w) { renderHalamanDetailPapanInfo(w, idLihatPgm); }, judul: 'Detail Papan Info' }; }
 
   var halaman = ruteDinamis || DAFTAR_HALAMAN[hash];
+  STATE.judulHalaman = halaman ? halaman.judul : 'Halaman Tidak Ditemukan';
+  perbaruiJudulHalaman();
   var semuaLink = document.querySelectorAll('[data-route]');
   for (var i = 0; i < semuaLink.length; i++) {
     var link = semuaLink[i];
-    if (link.getAttribute('data-route') === hash) link.classList.add('aktif');
-    else link.classList.remove('aktif');
+    if (link.getAttribute('data-route') === hash) { link.classList.add('aktif'); link.setAttribute('aria-current', 'page'); }
+    else { link.classList.remove('aktif'); link.removeAttribute('aria-current'); }
   }
 
-  var butuhLogin = hash.indexOf('#/admin') === 0 || hash.indexOf('#/guru') === 0 || hash.indexOf('#/wali') === 0;
+  var butuhLogin = adalahRuteTerlindungi(hash);
   if (butuhLogin && (!STATE.token || !STATE.pengguna)) { window.location.hash = '#/login'; return; }
 
   var role = ambilRoleSaatIni();
@@ -2401,9 +2686,10 @@ function tanganiRute() {
     if (role === 'wali' && routeKhususGuru(hash)) { redirectKeDashboard(); return; }
   }
 
+  if (hash === '#/login' && STATE.token && STATE.pengguna) { redirectKeDashboard(); return; }
   aturModeLayout();
   if (hash === '#/login') { wadah.style.marginTop = ''; wadah.innerHTML = ''; renderLogin(wadah); }
-  else if (hash.indexOf('#/admin') === 0 || hash.indexOf('#/guru') === 0 || hash.indexOf('#/wali') === 0) {
+  else if (butuhLogin) {
     wadah.innerHTML = '<div class="admin-wrapper"></div>';
     var wrapper = wadah.querySelector('.admin-wrapper');
     if (halaman && typeof halaman.render === 'function') halaman.render(wrapper);
@@ -2411,10 +2697,32 @@ function tanganiRute() {
   }
   else if (halaman && typeof halaman.render === 'function') { wadah.style.marginTop = ''; wadah.innerHTML = '<div class="container"></div>'; halaman.render(wadah.querySelector('.container')); }
   else { wadah.style.marginTop = ''; var j = halaman ? halaman.judul : 'Halaman Tidak Ditemukan'; wadah.innerHTML = '<div class="container">' + renderPlaceholder(j) + '</div>'; }
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  var kurangiGerak = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  window.scrollTo({ top: 0, behavior: kurangiGerak ? 'auto' : 'smooth' });
+  try { wadah.focus({ preventScroll: true }); } catch (e) {}
 }
-function bukaDrawer() { var d = document.getElementById('drawer'); var o = document.getElementById('drawer-overlay'); if (d) d.classList.add('terbuka'); if (o) o.classList.add('terbuka'); document.body.style.overflow = 'hidden'; }
-function tutupDrawer() { var d = document.getElementById('drawer'); var o = document.getElementById('drawer-overlay'); if (d) d.classList.remove('terbuka'); if (o) o.classList.remove('terbuka'); document.body.style.overflow = ''; }
+function tanganiRute() {
+  try { tanganiRuteInti(); }
+  catch (err) {
+    logDebug('Error rute:', err);
+    var w = document.getElementById('app');
+    if (w) w.innerHTML = '<div class="container"><div class="halaman-placeholder" role="alert"><h2>Terjadi kesalahan</h2><p class="teks-lembut mt-2">Halaman gagal ditampilkan. Silakan muat ulang.</p><button class="btn btn-utama mt-3" onclick="window.location.reload()" type="button">Muat Ulang</button></div></div>';
+  }
+}
+function bukaDrawer() {
+  var d = document.getElementById('drawer'); var o = document.getElementById('drawer-overlay'); var t = document.getElementById('tombol-drawer');
+  if (d) { d.classList.add('terbuka'); d.setAttribute('aria-hidden', 'false'); }
+  if (o) o.classList.add('terbuka');
+  if (t) t.setAttribute('aria-expanded', 'true');
+  document.body.style.overflow = 'hidden';
+}
+function tutupDrawer() {
+  var d = document.getElementById('drawer'); var o = document.getElementById('drawer-overlay'); var t = document.getElementById('tombol-drawer');
+  if (d) { d.classList.remove('terbuka'); d.setAttribute('aria-hidden', 'true'); }
+  if (o) o.classList.remove('terbuka');
+  if (t) t.setAttribute('aria-expanded', 'false');
+  document.body.style.overflow = '';
+}
 function pasangEventNavbar() {
   var tombolDrawer = document.getElementById('tombol-drawer');
   var tombolTutup = document.getElementById('tombol-tutup-drawer');
@@ -2431,6 +2739,8 @@ function pasangEventNavbar() {
   var menuLogout = document.getElementById('menu-logout'); if (menuLogout) menuLogout.addEventListener('click', function () { if (dropdownUser) dropdownUser.classList.remove('tampil'); prosesLogout(); });
 }
 function pasangEventAdmin() {
+  pasangEventSearch();
+  pasangEventSidebarGrup();
   var toggle1 = document.getElementById('topbar-toggle-sidebar');
   var toggle2 = document.getElementById('topbar-toggle-sidebar-2');
   if (toggle1) toggle1.addEventListener('click', toggleSidebar);
@@ -2440,11 +2750,11 @@ function pasangEventAdmin() {
   var tombolCari = document.getElementById('topbar-cari'); if (tombolCari) tombolCari.addEventListener('click', bukaSearch);
   var searchTutup = document.getElementById('search-tutup'); if (searchTutup) searchTutup.addEventListener('click', tutupSearch);
   var searchOverlay = document.getElementById('search-overlay'); if (searchOverlay) searchOverlay.addEventListener('click', function (e) { if (e.target === searchOverlay) tutupSearch(); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { tutupSearch(); tutupModal(); } if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); bukaSearch(); } });
+  document.addEventListener('keydown', tanganiKeyboardGlobal);
   document.addEventListener('click', function (e) { if (!e.target.closest || !e.target.closest('.dropdown-filter')) { var semua = document.querySelectorAll('.dropdown-filter-menu'); for (var i = 0; i < semua.length; i++) semua[i].classList.remove('tampil'); } });
   var topbarUser = document.getElementById('topbar-user');
   var topbarDropdown = document.getElementById('topbar-dropdown');
-  if (topbarUser && topbarDropdown) { topbarUser.addEventListener('click', function (e) { e.stopPropagation(); topbarDropdown.classList.toggle('tampil'); }); document.addEventListener('click', function () { topbarDropdown.classList.remove('tampil'); }); }
+  if (topbarUser && topbarDropdown) { topbarUser.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('#topbar-dropdown')) return; e.stopPropagation(); topbarDropdown.classList.toggle('tampil'); }); document.addEventListener('click', function () { topbarDropdown.classList.remove('tampil'); }); }
   var topbarMenuProfil = document.getElementById('topbar-menu-profil'); if (topbarMenuProfil) topbarMenuProfil.addEventListener('click', function () { tampilkanToast('Halaman profil akan segera tersedia.', 'info', 'Segera'); if (topbarDropdown) topbarDropdown.classList.remove('tampil'); });
   var topbarMenuPengaturan = document.getElementById('topbar-menu-pengaturan'); if (topbarMenuPengaturan) topbarMenuPengaturan.addEventListener('click', function () { window.location.hash = '#/admin/pengaturan'; if (topbarDropdown) topbarDropdown.classList.remove('tampil'); });
   var topbarMenuLogout = document.getElementById('topbar-menu-logout'); if (topbarMenuLogout) topbarMenuLogout.addEventListener('click', function () { if (topbarDropdown) topbarDropdown.classList.remove('tampil'); prosesLogout(); });
@@ -2462,9 +2772,104 @@ function pasangEventScrollNavbar() {
   cekScroll();
 }
 
+/* ============================================================
+ * PENGATURAN TAMPILAN, JUDUL, AKSESIBILITAS (v7.7)
+ * ============================================================ */
+var PETA_WARNA_PENGATURAN = { warna_utama: '--warna-utama', warna_sekunder: '--warna-sekunder', warna_aksen: '--warna-aksen' };
+
+function warnaValid(v) { return typeof v === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v.trim()); }
+function hexKeRgb(hex) {
+  var h = hex.replace('#', '');
+  if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+  return [parseInt(h.substr(0, 2), 16), parseInt(h.substr(2, 2), 16), parseInt(h.substr(4, 2), 16)];
+}
+function rgbKeHex(r, g, b) {
+  var p = function (n) { n = Math.max(0, Math.min(255, Math.round(n))); return (n < 16 ? '0' : '') + n.toString(16); };
+  return '#' + p(r) + p(g) + p(b);
+}
+function gelapkanWarna(hex, f) { var c = hexKeRgb(hex); return rgbKeHex(c[0] * (1 - f), c[1] * (1 - f), c[2] * (1 - f)); }
+function campurPutih(hex, f) { var c = hexKeRgb(hex); return rgbKeHex(c[0] + (255 - c[0]) * f, c[1] + (255 - c[1]) * f, c[2] + (255 - c[2]) * f); }
+
+/**
+ * Warna kustom dari pengaturan hanya berlaku di tema terang; di tema gelap memakai palet gelap bawaan CSS
+ * (inline style di html akan selalu menang atas [data-tema="gelap"], jadi harus dilepas).
+ */
+function terapkanWarnaPengaturan() {
+  var root = document.documentElement;
+  var gelap = root.getAttribute('data-tema') === 'gelap';
+  var tampilan = (STATE.pengaturanPublik && STATE.pengaturanPublik.tampilan) || {};
+  for (var kunci in PETA_WARNA_PENGATURAN) {
+    if (!PETA_WARNA_PENGATURAN.hasOwnProperty(kunci)) continue;
+    var prop = PETA_WARNA_PENGATURAN[kunci];
+    if (!gelap && warnaValid(tampilan[kunci])) root.style.setProperty(prop, tampilan[kunci].trim());
+    else root.style.removeProperty(prop);
+  }
+  if (!gelap && warnaValid(tampilan.warna_utama)) {
+    var u = tampilan.warna_utama.trim();
+    root.style.setProperty('--warna-utama-tua', gelapkanWarna(u, 0.3));
+    root.style.setProperty('--warna-utama-lembut', campurPutih(u, 0.9));
+  } else {
+    root.style.removeProperty('--warna-utama-tua');
+    root.style.removeProperty('--warna-utama-lembut');
+  }
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', gelap ? '#1e1e1e' : ((warnaValid(tampilan.warna_utama) && tampilan.warna_utama.trim()) || '#2e7d32'));
+}
+function simpanCachePengaturan(data) { try { localStorage.setItem(KONFIG.STORAGE_PENGATURAN, JSON.stringify(data)); } catch (e) {} }
+/** Terapkan pengaturan terakhir yang diketahui lebih awal agar tidak berkedip (nama/warna default). */
+function muatCachePengaturan() {
+  try {
+    var teks = localStorage.getItem(KONFIG.STORAGE_PENGATURAN);
+    if (!teks) return;
+    var d = JSON.parse(teks);
+    if (d && typeof d === 'object') { STATE.pengaturanPublik = d; terapkanPengaturanKeUI(d); }
+  } catch (e) {}
+}
+function perbaruiJudulHalaman() {
+  var ident = (STATE.pengaturanPublik && STATE.pengaturanPublik.identitas) || {};
+  var nama = ident.nama_pesantren || KONFIG.NAMA_APP;
+  var j = STATE.judulHalaman;
+  document.title = (!j || j === 'Beranda') ? (nama + ' - ' + KONFIG.SLOGAN) : (j + ' | ' + nama);
+}
+function bersihkanBadgeNotifPalsu() {
+  var b = document.querySelector('.topbar-notif-badge');
+  if (b && b.parentNode) b.parentNode.removeChild(b);
+}
+function sinkronAriaDropdown() {
+  var pasangan = [['navbar-user-tombol', 'navbar-user-dropdown'], ['topbar-user', 'topbar-dropdown']];
+  for (var i = 0; i < pasangan.length; i++) {
+    var el = document.getElementById(pasangan[i][0]); var dd = document.getElementById(pasangan[i][1]);
+    if (el && dd) el.setAttribute('aria-expanded', dd.classList.contains('tampil') ? 'true' : 'false');
+  }
+}
+function terapkanAksesibilitasDasar() {
+  var toast = document.getElementById('toast-container');
+  if (toast) { toast.setAttribute('aria-live', 'polite'); toast.setAttribute('aria-atomic', 'false'); }
+  var label = { 'navbar-menu': 'Menu utama', 'sidebar-menu': 'Menu panel', 'bottom-nav-admin': 'Navigasi bawah' };
+  for (var id in label) {
+    if (!label.hasOwnProperty(id)) continue;
+    var el = document.getElementById(id);
+    if (el && !el.getAttribute('aria-label')) el.setAttribute('aria-label', label[id]);
+  }
+  var dm = document.querySelector('#drawer .drawer-menu'); if (dm) dm.setAttribute('aria-label', 'Menu seluler');
+  var drawer = document.getElementById('drawer'); if (drawer) drawer.setAttribute('aria-hidden', 'true');
+  var td = document.getElementById('tombol-drawer'); if (td) { td.setAttribute('aria-expanded', 'false'); td.setAttribute('aria-controls', 'drawer'); }
+  var muat = document.querySelector('#app .loading-box'); if (muat) { muat.setAttribute('role', 'status'); muat.setAttribute('aria-live', 'polite'); }
+  var app = document.getElementById('app'); if (app) { app.setAttribute('tabindex', '-1'); app.style.outline = 'none'; }
+  var tu = document.getElementById('navbar-user-tombol'); if (tu) { tu.setAttribute('aria-haspopup', 'menu'); tu.setAttribute('aria-expanded', 'false'); }
+  var tp = document.getElementById('topbar-user');
+  if (tp) {
+    tp.setAttribute('role', 'button'); tp.setAttribute('tabindex', '0'); tp.setAttribute('aria-haspopup', 'menu'); tp.setAttribute('aria-expanded', 'false');
+    tp.setAttribute('aria-label', 'Menu pengguna');
+    tp.addEventListener('keydown', function (e) { if (e.target === tp && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); tp.click(); } });
+  }
+  document.addEventListener('click', function () { setTimeout(sinkronAriaDropdown, 0); });
+}
+
 function inisialisasi() {
   logDebug('ELKAROM v' + KONFIG.VERSI + ' dimulai.');
   muatTemaTersimpan(); muatStateSidebar(); ambilSesiTersimpan(); perbaruiNavbar();
+  muatCachePengaturan(); terapkanAksesibilitasDasar(); bersihkanBadgeNotifPalsu();
   pasangEventNavbar(); pasangEventAdmin(); pasangEventScrollNavbar();
   window.addEventListener('hashchange', tanganiRute);
   tanganiRute();
@@ -2472,11 +2877,65 @@ function inisialisasi() {
   muatPengaturanPublik();
   if (STATE.token) {
     panggilApi('verifikasiToken', { token: STATE.token }, 'POST').then(function (respon) {
-      if (!respon || !respon.sukses) { hapusSesi(); if (STATE.halamanAktif && STATE.halamanAktif.indexOf('#/admin') === 0) window.location.hash = '#/login'; }
-      else if (respon.data && respon.data.pengguna) { STATE.pengguna = respon.data.pengguna; try { localStorage.setItem(KONFIG.STORAGE_PENGGUNA, JSON.stringify(STATE.pengguna)); } catch (e) {} perbaruiNavbar(); renderMenuSidebar(); }
+      // Gangguan jaringan bukan alasan untuk logout: pertahankan sesi.
+      if (respon && respon.jaringan) { logDebug('Verifikasi token ditunda (offline).'); return; }
+      if (!respon || !respon.sukses) {
+        hapusSesi(); renderMenuSidebar();
+        if (adalahRuteTerlindungi(STATE.halamanAktif || '')) window.location.hash = '#/login'; else aturModeLayout();
+        return;
+      }
+      if (respon.data && respon.data.pengguna) {
+        var roleLama = ambilRoleSaatIni();
+        STATE.pengguna = respon.data.pengguna;
+        try { localStorage.setItem(KONFIG.STORAGE_PENGGUNA, JSON.stringify(STATE.pengguna)); } catch (e) {}
+        perbaruiNavbar(); renderMenuSidebar();
+        if (roleLama !== ambilRoleSaatIni() && adalahRuteTerlindungi(STATE.halamanAktif || '')) tanganiRute();
+      }
     });
   } else { panggilApi('ping', {}, 'GET').then(function (respon) { logDebug('Ping GAS:', respon); }); }
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', inisialisasi);
 else inisialisasi();
+
+/* ---- Ekspor untuk handler inline (onclick/oninput/onsubmit) ---- */
+window.aksiCetakKTS = aksiCetakKTS;
+window.aksiCetakTerpilih = aksiCetakTerpilih;
+window.aksiResetGrupPengaturan = aksiResetGrupPengaturan;
+window.aksiUbahStatusPapanInfo = aksiUbahStatusPapanInfo;
+window.exportCSV = exportCSV;
+window.exportExcel = exportExcel;
+window.exportPDF = exportPDF;
+window.gantiTabPengaturan = gantiTabPengaturan;
+window.gantiTabProfil = gantiTabProfil;
+window.hapusFoto = hapusFoto;
+window.hapusPapanInfoProses = hapusPapanInfoProses;
+window.hapusSantriProses = hapusSantriProses;
+window.konfirmasiHapusPapanInfo = konfirmasiHapusPapanInfo;
+window.konfirmasiHapusSantri = konfirmasiHapusSantri;
+window.muatPapanInfo = muatPapanInfo;
+window.muatPengaturanAdmin = muatPengaturanAdmin;
+window.muatSantri = muatSantri;
+window.onZoomSliderChange = onZoomSliderChange;
+window.pilihFileFoto = pilihFileFoto;
+window.pilihTahunAjaran = pilihTahunAjaran;
+window.prosesResetGrupPengaturan = prosesResetGrupPengaturan;
+window.prosesUbahStatusPapanInfo = prosesUbahStatusPapanInfo;
+window.renderModalTambah = renderModalTambah;
+window.resetCrop = resetCrop;
+window.resetFilterSantri = resetFilterSantri;
+window.setFilterPapanInfo = setFilterPapanInfo;
+window.setFilterSantri = setFilterSantri;
+window.setSortSantri = setSortSantri;
+window.simpanCrop = simpanCrop;
+window.submitFormGrupPengaturan = submitFormGrupPengaturan;
+window.submitFormPapanInfo = submitFormPapanInfo;
+window.submitFormSantri = submitFormSantri;
+window.toggleDropdownFilter = toggleDropdownFilter;
+window.toggleSemuaCheckbox = toggleSemuaCheckbox;
+window.tutupCrop = tutupCrop;
+window.tutupModal = tutupModal;
+window.zoomInCrop = zoomInCrop;
+window.zoomOutCrop = zoomOutCrop;
+window.SIP = { versi: KONFIG.VERSI };
+})();
