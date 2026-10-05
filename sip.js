@@ -885,6 +885,12 @@ function renderItemFilter(nilai, label) {
   var aktif = STATE.filter === nilai ? ' aktif' : '';
   return '<button class="dropdown-filter-item' + aktif + '" onclick="setFilterSantri(\'' + nilai + '\')" type="button"><span>' + escapeHtml(label) + '</span>' + (STATE.filter === nilai ? SVG_ICONS.check : '') + '</button>';
 }
+
+function renderItemFilterGuru(nilai, label) {
+  var aktif = STATE.filter === nilai ? ' aktif' : '';
+  return '<button class="dropdown-filter-item' + aktif + '" onclick="setFilterSantriGuru(\'' + nilai + '\')" type="button"><span>' + escapeHtml(label) + '</span>' + (STATE.filter === nilai ? SVG_ICONS.check : '') + '</button>';
+}
+  
 function setFilterSantri(nilai) {
   STATE.filter = nilai;
   var lbl = document.getElementById('label-filter-santri');
@@ -893,6 +899,16 @@ function setFilterSantri(nilai) {
   if (menu) menu.classList.remove('tampil');
   renderDaftarSantriKeWadah();
 }
+
+function setFilterSantriGuru(nilai) {
+  STATE.filter = nilai;
+  var lbl = document.getElementById('label-filter-santri');
+  if (lbl) lbl.textContent = ambilLabelFilter(nilai);
+  var menu = document.getElementById('dropdown-filter-santri');
+  if (menu) menu.classList.remove('tampil');
+  renderDaftarSantriKeWaliWadah();
+}
+  
 function filterSantri(daftar) {
   var hasil = daftar.slice();
   if (STATE.filter === 'aktif') hasil = hasil.filter(function (s) { return s.status === 'aktif'; });
@@ -1186,8 +1202,20 @@ function renderHalamanSantriGuru(wadah) {
     '</div>' +
     '<div id="santri-statistik">' + renderStatistikSantri() + '</div>' +
     '<div class="santri-toolbar">' +
-      '<div class="santri-search">' + SVG_ICONS.search + '<input id="santri-search-input" placeholder="Cari nama, NIS, atau NISN..." type="text" value="' + escapeHtml(STATE.search) + '"></div>' +
+  '<div class="santri-search">' + SVG_ICONS.search + '<input id="santri-search-input" placeholder="Cari nama, NIS, atau NISN..." type="text" value="' + escapeHtml(STATE.search) + '"></div>' +
+  '<div class="santri-toolbar-aksi">' +
+    '<div class="dropdown-filter">' +
+      '<button class="dropdown-filter-tombol" onclick="toggleDropdownFilter(\'dropdown-filter-santri\')" type="button">' + SVG_ICONS.filter + '<span class="dropdown-filter-label">Filter:</span><span id="label-filter-santri">' + ambilLabelFilter(STATE.filter) + '</span>' + SVG_ICONS.chevronDown + '</button>' +
+      '<div class="dropdown-filter-menu" id="dropdown-filter-santri">' +
+        renderItemFilterGuru('semua', 'Semua Santri') +
+        renderItemFilterGuru('aktif', 'Aktif') +
+        renderItemFilterGuru('alumni', 'Alumni') +
+        renderItemFilterGuru('putra', 'Putra') +
+        renderItemFilterGuru('putri', 'Putri') +
+      '</div>' +
     '</div>' +
+  '</div>' +
+'</div>' +
     '<div id="santri-content"><div class="loading-box"><div class="spinner"></div><p class="teks-lembut">Memuat data santri...</p></div></div>';
 
   // Pasang event search (reuse)
@@ -1215,6 +1243,48 @@ function renderHalamanSantriGuru(wadah) {
   });
 }
 
+function renderHalamanDetailSantriGuru(wadah, id) {
+  if (!pastikanLoginGuruWali()) return;
+  var role = ambilRoleSaatIni();
+  var routeKembali = role === 'guru' ? '#/guru/santri' : '#/wali/santri';
+  wadah.innerHTML = '<div class="loading-box"><div class="spinner"></div><p class="teks-lembut">Memuat profil santri...</p></div>';
+  panggilApi('ambilSiswaBerdasarkanId', { id: id }, 'POST').then(function (res) {
+    if (!res || !res.sukses || !res.data) {
+      wadah.innerHTML = '<div class="admin-placeholder"><div class="admin-placeholder-ikon">' + SVG_ICONS.warning + '</div><h2>Data tidak ditemukan</h2><p>' + escapeHtml((res && res.pesan) || '') + '</p><a class="btn btn-utama mt-4" href="' + routeKembali + '">Kembali</a></div>';
+      return;
+    }
+    wadah.innerHTML = renderProfilSantriReadOnly(res.data, routeKembali);
+  });
+}
+
+function renderProfilSantriReadOnly(s, routeKembali) {
+  var ortu = s.orang_tua || {};
+  var ayah = ortu.ayah || {};
+  var ibu = ortu.ibu || {};
+  var fotoHtml = s.foto_url ? '<img alt="' + escapeHtml(s.nama_lengkap) + '" src="' + escapeHtml(s.foto_url) + '">' : escapeHtml(ambilInisial(s.nama_lengkap));
+  var labelStatus = s.status === 'aktif' ? 'AKTIF' : (s.status === 'alumni' ? 'ALUMNI' : 'NONAKTIF');
+  var html = '' +
+    '<div class="admin-halaman-header"><div class="admin-halaman-judul-wrap"><a class="btn btn-ghost btn-sm" href="' + routeKembali + '" style="margin-bottom:8px">' + SVG_ICONS.arrowLeft + '<span>Kembali</span></a></div></div>' +
+    '<div class="profil-header"><div class="profil-foto-besar">' + fotoHtml + '</div><div class="profil-info"><h1 class="profil-nama">' + escapeHtml(s.nama_lengkap || '-') + '</h1><div class="profil-nis">NIS: ' + escapeHtml(s.nis || '-') + '  -  NISN: ' + escapeHtml(s.nisn || '-') + '</div><div class="profil-tag"><span class="profil-tag-item">' + labelStatus + '</span><span class="profil-tag-item">' + escapeHtml(labelJenisKelamin(s.jenis_kelamin) || '-') + '</span><span class="profil-tag-item">Kelas: ' + escapeHtml(s.kelas_id || '-') + '</span></div></div></div>' +
+    '<div class="profil-tab-bar"><div class="profil-tab aktif" onclick="gantiTabProfil(this,\'tab-biodata\')">Biodata</div><div class="profil-tab" onclick="gantiTabProfil(this,\'tab-ortu\')">Orang Tua</div><div class="profil-tab" onclick="gantiTabProfil(this,\'tab-akademik\')">Akademik</div></div>' +
+    '<div class="form-card" id="tab-biodata"><div class="form-card-judul">' + SVG_ICONS.user + '<span>Biodata Santri</span></div>' +
+      baris('Nama Lengkap', s.nama_lengkap) + baris('Nama Panggilan', s.nama_panggilan) + baris('NIS', s.nis) + baris('NISN', s.nisn) +
+      baris('Jenis Kelamin', labelJenisKelamin(s.jenis_kelamin)) + baris('Tempat Lahir', s.tempat_lahir) + baris('Tanggal Lahir', formatTanggalIndo(s.tanggal_lahir)) +
+      baris('Alamat', s.alamat) +
+    '</div>' +
+    '<div class="form-card" id="tab-ortu" style="display:none"><div class="form-card-judul">' + SVG_ICONS.users + '<span>Data Orang Tua</span></div>' +
+      '<div style="margin-bottom:16px"><strong style="font-size:14px;color:var(--warna-utama-tua)">Ayah</strong></div>' +
+      baris('Nama', ayah.nama_lengkap || s.nama_ayah) + baris('Pekerjaan', ayah.pekerjaan) + baris('Status', ayah.status_hidup === 'meninggal' ? 'Meninggal' : 'Hidup') +
+      '<div style="margin:24px 0 16px"><strong style="font-size:14px;color:var(--warna-utama-tua)">Ibu</strong></div>' +
+      baris('Nama', ibu.nama_lengkap || s.nama_ibu) + baris('Pekerjaan', ibu.pekerjaan) + baris('Status', ibu.status_hidup === 'meninggal' ? 'Meninggal' : 'Hidup') +
+    '</div>' +
+    '<div class="form-card" id="tab-akademik" style="display:none"><div class="form-card-judul">' + SVG_ICONS.graduation + '<span>Data Akademik</span></div>' +
+      baris('Kelas', s.kelas_id) + baris('Tahun Masuk', s.tahun_masuk) + baris('Tahun Selesai', s.tahun_selesai) + baris('Status', labelStatus) +
+    '</div>';
+  return html;
+}
+  
+
 /**
  * Versi read-only dari renderDaftarSantriKeWadah.
  * Tanpa checkbox, tanpa tombol aksi edit/hapus.
@@ -1235,17 +1305,19 @@ function renderDaftarSantriKeWaliWadah() {
   var html = '<div class="santri-info-count">Menampilkan <strong>' + daftar.length + '</strong> dari <strong>' + STATE.daftarSantri.length + '</strong> santri</div>';
   // Card list (tampil di semua ukuran karena read-only, lebih ringkas)
   html += '<div class="santri-card-list" style="display:flex">';
+  var roleCard = ambilRoleSaatIni();
+  var prefixCard = (roleCard === 'guru') ? '#/guru/santri/lihat/' : '#/wali/santri/lihat/';
   daftar.forEach(function (s) {
     var badgeKelas = 'santri-badge ' + (s.status || 'aktif');
     var labelStatus = s.status === 'aktif' ? 'AKTIF' : (s.status === 'alumni' ? 'ALUMNI' : 'NONAKTIF');
     var fotoHtml = s.foto_url ? '<img alt="' + escapeHtml(s.nama_lengkap) + '" src="' + escapeHtml(s.foto_url) + '">' : escapeHtml(ambilInisial(s.nama_lengkap));
-    html += '<div class="santri-card ' + (s.status || '') + '">';
+    html += '<a class="santri-card ' + (s.status || '') + '" href="' + prefixCard + escapeHtml(s.id) + '" style="text-decoration:none;color:inherit">';
     html += '<div class="santri-card-foto">' + fotoHtml + '</div>';
     html += '<div class="santri-card-body">';
     html += '<div class="santri-card-nama">' + escapeHtml(s.nama_lengkap || '-') + '</div>';
     html += '<div class="santri-card-nis">NIS: ' + escapeHtml(s.nis || '-') + '</div>';
     html += '<div class="santri-card-meta"><span class="' + badgeKelas + '">' + labelStatus + '</span><span>' + escapeHtml(labelJenisKelamin(s.jenis_kelamin) || '-') + '</span><span>' + escapeHtml(s.kelas_id || 'Belum ada kelas') + '</span></div>';
-    html += '</div></div>';
+    html += '</div></a>';
   });
   html += '</div>';
   wrap.innerHTML = html;
@@ -2267,8 +2339,7 @@ function muatPapanInfoDashboard() {
       var tgl = p.tanggal_terbit ? formatTanggalIndo(p.tanggal_terbit) : (p.dibuat_pada ? formatTanggalIndo(p.dibuat_pada) : '');
       var isiRingkas = String(p.isi || '');
       if (isiRingkas.length > 100) isiRingkas = isiRingkas.substring(0, 100) + '...';
-      html += '<a class="pengumuman-item" href="#/admin/pengumuman/lihat/' + escapeHtml(p.id) + '">';
-      html += '<div class="pengumuman-item-header"><span class="pengumuman-item-kategori">' + escapeHtml(labelKategoriPapanInfo(p.kategori)) + '</span><span class="pengumuman-item-tanggal">' + escapeHtml(tgl) + '</span></div>';
+      html += '<a class="pengumuman-item" href="#" onclick="event.preventDefault();bukaDetailPapanInfoModal(\'' + escapeHtml(p.id) + '\')">';      html += '<div class="pengumuman-item-header"><span class="pengumuman-item-kategori">' + escapeHtml(labelKategoriPapanInfo(p.kategori)) + '</span><span class="pengumuman-item-tanggal">' + escapeHtml(tgl) + '</span></div>';
       html += '<div class="pengumuman-item-judul">' + escapeHtml(p.judul || '') + '</div>';
       html += '<div class="pengumuman-item-isi">' + escapeHtml(isiRingkas) + '</div>';
       html += '<div class="pengumuman-item-selengkapnya">Lihat selengkapnya &rarr;</div>';
@@ -2277,6 +2348,31 @@ function muatPapanInfoDashboard() {
     wadah.innerHTML = html;
   });
 }
+
+function bukaDetailPapanInfoModal(id) {
+  if (!id) return;
+  bukaModal('Memuat...', '<div class="loading-box-sm"><div class="spinner"></div></div>', '');
+  panggilApi('ambilPengumumanBerdasarkanId', { id: id }, 'POST').then(function (res) {
+    if (!res || !res.sukses || !res.data) {
+      bukaModal('Error', '<p>' + escapeHtml((res && res.pesan) || 'Data tidak ditemukan.') + '</p>', '<button class="btn btn-ghost" onclick="tutupModal()" type="button">Tutup</button>');
+      return;
+    }
+    var p = res.data;
+    var tgl = p.tanggal_terbit ? formatTanggalIndo(p.tanggal_terbit) : (p.dibuat_pada ? formatTanggalIndo(p.dibuat_pada) : '-');
+    var isiHtml = escapeHtml(p.isi || '').replace(/\n/g, '<br>');
+    var lampiranHtml = '';
+    if (p.lampiran_url && urlAman(p.lampiran_url)) {
+      lampiranHtml = '<div style="margin-top:16px"><a class="btn btn-outline btn-sm" href="' + escapeHtml(urlAman(p.lampiran_url)) + '" target="_blank" rel="noopener">' + SVG_ICONS.file + '<span>Buka Lampiran</span></a></div>';
+    }
+    var body = '' +
+      '<div class="papan-info-badges" style="margin-bottom:12px">' + renderBadgeKategoriPapanInfo(p.kategori) + renderBadgeStatusPapanInfo(p.status) + renderBadgeTargetPapanInfo(p.target) + '</div>' +
+      '<div style="font-size:13px;color:var(--warna-teks-lembut);margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--warna-border)">' + SVG_ICONS.calendar + ' Terbit: ' + escapeHtml(tgl) + '</div>' +
+      '<div style="font-size:14.5px;line-height:1.8;white-space:pre-wrap;word-break:break-word">' + isiHtml + '</div>' +
+      lampiranHtml;
+    bukaModal(p.judul || 'Papan Info', body, '<button class="btn btn-ghost" onclick="tutupModal()" type="button">Tutup</button>', 'lg');
+  });
+}
+  
 
 /* ============================================================
  * PAPAN INFO - FORM & DETAIL
@@ -3006,7 +3102,7 @@ function aksiResetPasswordGuru(id) {
 // ----- Halaman Rekan Guru (untuk Guru) -----
 
 function renderHalamanRekanGuru(wadah) {
-  if (!pastikanLoginGuruWali && !pastikanLoginAdmin) { return; }
+  if (!STATE.token || !STATE.pengguna) { window.location.hash = '#/login'; return; }
   var role = ambilRoleSaatIni();
   if (role !== 'guru' && role !== 'admin') { redirectKeDashboard(); return; }
 
@@ -3289,6 +3385,8 @@ function tanganiRuteInti() {
   else if (hash.indexOf('#/admin/guru/tambah') === 0) ruteDinamis = { render: function (w) { renderHalamanTambahGuru(w); }, judul: 'Tambah Guru' };
   else if (hash.indexOf('#/admin/guru/edit/') === 0) { var idEditGuru = hash.replace('#/admin/guru/edit/', ''); ruteDinamis = { render: function (w) { renderHalamanEditGuru(w, idEditGuru); }, judul: 'Edit Guru' }; }
   else if (hash.indexOf('#/admin/guru/lihat/') === 0) { var idLihatGuru = hash.replace('#/admin/guru/lihat/', ''); ruteDinamis = { render: function (w) { renderHalamanDetailGuru(w, idLihatGuru); }, judul: 'Profil Guru' }; }
+  else if (hash.indexOf('#/guru/santri/lihat/') === 0) { var idLihatSantriGuru = hash.replace('#/guru/santri/lihat/', ''); ruteDinamis = { render: function (w) { renderHalamanDetailSantriGuru(w, idLihatSantriGuru); }, judul: 'Profil Santri' }; }    
+  else if (hash.indexOf('#/wali/santri/lihat/') === 0) { var idLihatSantriWali = hash.replace('#/wali/santri/lihat/', ''); ruteDinamis = { render: function (w) { renderHalamanDetailSantriGuru(w, idLihatSantriWali); }, judul: 'Profil Santri' }; }
   
   var halaman = ruteDinamis || DAFTAR_HALAMAN[hash];
   STATE.judulHalaman = halaman ? halaman.judul : 'Halaman Tidak Ditemukan';
@@ -3562,4 +3660,6 @@ window.tutupModal = tutupModal;
 window.zoomInCrop = zoomInCrop;
 window.zoomOutCrop = zoomOutCrop;
 window.SIP = { versi: KONFIG.VERSI };
+window.bukaDetailPapanInfoModal = bukaDetailPapanInfoModal;  
+window.setFilterSantriGuru = setFilterSantriGuru;  
 })();
