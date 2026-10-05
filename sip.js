@@ -122,6 +122,7 @@ var STATE = {
   judulHalaman: '',
   loginGagal: 0,
   loginTerkunciSampai: 0
+  daftarGuru: []
 };
 
 var DATA_STATIS = {
@@ -221,7 +222,8 @@ var MENU_GURU = [
   ]},
   { grup: 'Informasi', item: [
     { label: 'Data Santri', route: '#/guru/santri', icon: 'users' },
-    { label: 'Papan Info', route: '#/guru/papan-info', icon: 'megaphone' }
+    { label: 'Papan Info', route: '#/guru/papan-info', icon: 'megaphone' },
+    { label: 'Rekan Guru', route: '#/guru/rekan-guru', icon: 'userCheck' }
   ]}
 ];
 
@@ -2421,6 +2423,623 @@ function prosesUbahStatusPapanInfo(id, status) {
   });
 }
 
+
+
+/* ============================================================
+ * MODUL DATA GURU
+ * ============================================================ */
+
+// ----- Statistik -----
+
+function renderStatistikGuru(data) {
+  var d = data || { total: 0, aktif: 0, nonaktif: 0, putra: 0, putri: 0 };
+  return '<div class="stat-grid">' +
+    '<div class="stat-card"><div class="stat-label">Total Guru</div><div class="stat-nilai">' + (d.total || 0) + '</div></div>' +
+    '<div class="stat-card stat-card-aksen"><div class="stat-label">Guru Aktif</div><div class="stat-nilai">' + (d.aktif || 0) + '</div></div>' +
+    '<div class="stat-card stat-card-merah"><div class="stat-label">Nonaktif</div><div class="stat-nilai">' + (d.nonaktif || 0) + '</div></div>' +
+    '<div class="stat-card stat-card-abu"><div class="stat-label">Putra</div><div class="stat-nilai">' + (d.putra || 0) + '</div></div>' +
+    '<div class="stat-card stat-card-info"><div class="stat-label">Putri</div><div class="stat-nilai">' + (d.putri || 0) + '</div></div>' +
+  '</div>';
+}
+
+// ----- Filter & Sort -----
+
+function ambilLabelFilterGuru(f) {
+  if (f === 'aktif') return 'Aktif';
+  if (f === 'nonaktif') return 'Nonaktif';
+  if (f === 'putra') return 'Putra';
+  if (f === 'putri') return 'Putri';
+  return 'Semua';
+}
+
+function setFilterGuru(nilai) {
+  STATE.filter = nilai;
+  var lbl = document.getElementById('label-filter-guru');
+  if (lbl) lbl.textContent = ambilLabelFilterGuru(nilai);
+  var menu = document.getElementById('dropdown-filter-guru');
+  if (menu) menu.classList.remove('tampil');
+  renderDaftarGuruKeWadah();
+}
+
+function filterGuru(daftar) {
+  var hasil = daftar.slice();
+  if (STATE.filter === 'aktif') hasil = hasil.filter(function (g) { return g.status === 'aktif'; });
+  else if (STATE.filter === 'nonaktif') hasil = hasil.filter(function (g) { return g.status === 'nonaktif'; });
+  else if (STATE.filter === 'putra') hasil = hasil.filter(function (g) { return g.jenis_kelamin === 'L'; });
+  else if (STATE.filter === 'putri') hasil = hasil.filter(function (g) { return g.jenis_kelamin === 'P'; });
+  if (STATE.search) {
+    var kunci = STATE.search.toLowerCase().trim();
+    hasil = hasil.filter(function (g) {
+      return (String(g.nama_lengkap || '').toLowerCase().indexOf(kunci) > -1) ||
+             (String(g.nip || '').toLowerCase().indexOf(kunci) > -1) ||
+             (String(g.email || '').toLowerCase().indexOf(kunci) > -1) ||
+             (String(g.jabatan || '').toLowerCase().indexOf(kunci) > -1);
+    });
+  }
+  return hasil;
+}
+
+function sortGuru(daftar) {
+  var kolom = STATE.sortKolom;
+  var asc = STATE.sortAsc;
+  return daftar.slice().sort(function (a, b) {
+    var va = String(a[kolom] || '').toLowerCase();
+    var vb = String(b[kolom] || '').toLowerCase();
+    if (va < vb) return asc ? -1 : 1;
+    if (va > vb) return asc ? 1 : -1;
+    return 0;
+  });
+}
+
+function setSortGuru(kolom) {
+  if (STATE.sortKolom === kolom) STATE.sortAsc = !STATE.sortAsc;
+  else { STATE.sortKolom = kolom; STATE.sortAsc = true; }
+  renderDaftarGuruKeWadah();
+}
+
+function resetFilterGuru() {
+  STATE.filter = 'semua';
+  STATE.search = '';
+  var inp = document.getElementById('guru-search-input');
+  if (inp) inp.value = '';
+  var lbl = document.getElementById('label-filter-guru');
+  if (lbl) lbl.textContent = 'Semua';
+  renderDaftarGuruKeWadah();
+}
+
+// ----- Toolbar -----
+
+function renderItemFilterGuru(nilai, label) {
+  var aktif = STATE.filter === nilai ? ' aktif' : '';
+  return '<button class="dropdown-filter-item' + aktif + '" onclick="setFilterGuru(\'' + nilai + '\')" type="button"><span>' + escapeHtml(label) + '</span>' + (STATE.filter === nilai ? SVG_ICONS.check : '') + '</button>';
+}
+
+function renderToolbarGuru() {
+  return '<div class="santri-toolbar">' +
+    '<div class="santri-search">' + SVG_ICONS.search + '<input id="guru-search-input" placeholder="Cari nama, NIP, atau email..." type="text" value="' + escapeHtml(STATE.search) + '"></div>' +
+    '<div class="santri-toolbar-aksi">' +
+      '<div class="dropdown-filter">' +
+        '<button class="dropdown-filter-tombol" onclick="toggleDropdownFilter(\'dropdown-filter-guru\')" type="button">' + SVG_ICONS.filter + '<span class="dropdown-filter-label">Filter:</span><span id="label-filter-guru">' + ambilLabelFilterGuru(STATE.filter) + '</span>' + SVG_ICONS.chevronDown + '</button>' +
+        '<div class="dropdown-filter-menu" id="dropdown-filter-guru">' +
+          renderItemFilterGuru('semua', 'Semua Guru') +
+          renderItemFilterGuru('aktif', 'Aktif') +
+          renderItemFilterGuru('nonaktif', 'Nonaktif') +
+          renderItemFilterGuru('putra', 'Putra') +
+          renderItemFilterGuru('putri', 'Putri') +
+        '</div>' +
+      '</div>' +
+      '<a class="btn btn-utama" href="#/admin/guru/tambah">' + SVG_ICONS.plus + '<span>Tambah Guru</span></a>' +
+    '</div>' +
+  '</div>';
+}
+
+// ----- Render List -----
+
+function renderFotoMiniGuru(g) {
+  if (g.foto_url) return '<div class="santri-foto-mini"><img alt="' + escapeHtml(g.nama_lengkap) + '" src="' + escapeHtml(g.foto_url) + '"></div>';
+  return '<div class="santri-foto-mini">' + escapeHtml(ambilInisial(g.nama_lengkap)) + '</div>';
+}
+
+function renderDaftarGuruKeWadah() {
+  var wrap = document.getElementById('guru-content');
+  if (!wrap) return;
+
+  if (!STATE.daftarGuru || STATE.daftarGuru.length === 0) {
+    wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.userCheck + '<h3>Belum ada data guru</h3><p>Mulai dengan menambahkan data guru pertama.</p><a class="btn btn-utama" href="#/admin/guru/tambah">' + SVG_ICONS.plus + '<span>Tambah Guru</span></a></div>';
+    return;
+  }
+
+  var daftar = filterGuru(STATE.daftarGuru);
+  daftar = sortGuru(daftar);
+
+  if (daftar.length === 0) {
+    wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.search + '<h3>Tidak ada hasil</h3><p>Tidak ada guru yang cocok dengan filter/pencarian.</p><button class="btn btn-outline" onclick="resetFilterGuru()" type="button">Reset Filter</button></div>';
+    return;
+  }
+
+  var html = '<div class="santri-info-count">Menampilkan <strong>' + daftar.length + '</strong> dari <strong>' + STATE.daftarGuru.length + '</strong> guru</div>';
+  html += renderTabelGuru(daftar);
+  html += renderCardGuru(daftar);
+  wrap.innerHTML = html;
+}
+
+function renderHeaderSortGuru(kolom, label) {
+  var aktif = STATE.sortKolom === kolom ? ' aktif-sort' : '';
+  var ikon = STATE.sortKolom === kolom ? (STATE.sortAsc ? SVG_ICONS.chevronUp : SVG_ICONS.chevronDown) : SVG_ICONS.chevronDown;
+  return '<th class="sortable' + aktif + '" onclick="setSortGuru(\'' + kolom + '\')">' + escapeHtml(label) + ikon + '</th>';
+}
+
+function renderTabelGuru(daftar) {
+  var html = '<div class="santri-tabel-wrap"><div class="santri-tabel-scroll"><table class="santri-tabel"><thead><tr>';
+  html += '<th>Foto</th>';
+  html += renderHeaderSortGuru('nip', 'NIP');
+  html += renderHeaderSortGuru('nama_lengkap', 'Nama');
+  html += renderHeaderSortGuru('jenis_kelamin', 'JK');
+  html += renderHeaderSortGuru('jabatan', 'Jabatan');
+  html += renderHeaderSortGuru('status', 'Status');
+  html += '<th style="text-align:right">Aksi</th>';
+  html += '</tr></thead><tbody>';
+  daftar.forEach(function (g) {
+    var badgeStatus = 'santri-badge ' + (g.status || 'aktif');
+    var labelStatus = g.status === 'aktif' ? 'AKTIF' : 'NONAKTIF';
+    html += '<tr class="santri-row">';
+    html += '<td>' + renderFotoMiniGuru(g) + '</td>';
+    html += '<td><span class="santri-nis">' + escapeHtml(g.nip || '-') + '</span></td>';
+    html += '<td><div class="santri-nama">' + escapeHtml(g.nama_lengkap || '-') + '</div></td>';
+    html += '<td>' + escapeHtml(labelJenisKelamin(g.jenis_kelamin) || '-') + '</td>';
+    html += '<td>' + escapeHtml(g.jabatan || '-') + '</td>';
+    html += '<td><span class="' + badgeStatus + '">' + labelStatus + '</span></td>';
+    html += '<td><div class="santri-aksi">';
+    html += '<a class="santri-aksi-tombol" href="#/admin/guru/lihat/' + escapeHtml(g.id) + '" title="Lihat Detail">' + SVG_ICONS.eye + '</a>';
+    html += '<a class="santri-aksi-tombol" href="#/admin/guru/edit/' + escapeHtml(g.id) + '" title="Edit">' + SVG_ICONS.edit + '</a>';
+    html += '<button class="santri-aksi-tombol" onclick="konfirmasiResetPasswordGuru(\'' + escapeHtml(g.id) + '\',\'' + escapeHtml(g.nama_lengkap) + '\')" title="Reset Password" type="button">' + SVG_ICONS.lock + '</button>';
+    html += '<button class="santri-aksi-tombol danger" onclick="konfirmasiHapusGuru(\'' + escapeHtml(g.id) + '\',\'' + escapeHtml(g.nama_lengkap) + '\')" title="Hapus" type="button">' + SVG_ICONS.trash + '</button>';
+    html += '</div></td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table></div></div>';
+  return html;
+}
+
+function renderCardGuru(daftar) {
+  var html = '<div class="santri-card-list">';
+  daftar.forEach(function (g) {
+    var badgeStatus = 'santri-badge ' + (g.status || 'aktif');
+    var labelStatus = g.status === 'aktif' ? 'AKTIF' : 'NONAKTIF';
+    var fotoHtml = g.foto_url ? '<img alt="' + escapeHtml(g.nama_lengkap) + '" src="' + escapeHtml(g.foto_url) + '">' : escapeHtml(ambilInisial(g.nama_lengkap));
+    html += '<div class="santri-card ' + (g.status || '') + '">';
+    html += '<div class="santri-card-foto">' + fotoHtml + '</div>';
+    html += '<div class="santri-card-body">';
+    html += '<div class="santri-card-nama">' + escapeHtml(g.nama_lengkap || '-') + '</div>';
+    html += '<div class="santri-card-nis">' + (g.nip ? 'NIP: ' + escapeHtml(g.nip) : escapeHtml(g.email || '-')) + '</div>';
+    html += '<div class="santri-card-meta"><span class="' + badgeStatus + '">' + labelStatus + '</span><span>' + escapeHtml(labelJenisKelamin(g.jenis_kelamin) || '-') + '</span><span>' + escapeHtml(g.jabatan || 'Guru') + '</span></div>';
+    html += '<div class="santri-card-aksi">';
+    html += '<a class="btn btn-outline btn-sm" href="#/admin/guru/lihat/' + escapeHtml(g.id) + '">' + SVG_ICONS.eye + '<span>Detail</span></a>';
+    html += '<a class="btn btn-outline btn-sm" href="#/admin/guru/edit/' + escapeHtml(g.id) + '">' + SVG_ICONS.edit + '<span>Edit</span></a>';
+    html += '<button class="btn btn-outline btn-sm" onclick="konfirmasiHapusGuru(\'' + escapeHtml(g.id) + '\',\'' + escapeHtml(g.nama_lengkap) + '\')" type="button">' + SVG_ICONS.trash + '</button>';
+    html += '</div></div></div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+// ----- Halaman Utama -----
+
+function renderHalamanGuru(wadah) {
+  if (!pastikanLoginAdmin()) return;
+  wadah.innerHTML = '' +
+    buatHalamanHeader('Data Guru dan Staf', 'Kelola data guru dan staf ELKAROM') +
+    '<div id="guru-statistik">' + renderStatistikGuru() + '</div>' +
+    renderToolbarGuru() +
+    '<div id="guru-content"><div class="loading-box"><div class="spinner"></div><p class="teks-lembut">Memuat data guru...</p></div></div>';
+  pasangEventToolbarGuru();
+  muatGuru();
+}
+
+function pasangEventToolbarGuru() {
+  var inp = document.getElementById('guru-search-input');
+  if (inp) {
+    var tmr = null;
+    inp.addEventListener('input', function () {
+      clearTimeout(tmr);
+      var v = this.value;
+      tmr = setTimeout(function () { STATE.search = v; renderDaftarGuruKeWadah(); }, 250);
+    });
+  }
+}
+
+function muatGuru() {
+  panggilApi('statistikGuru', {}, 'POST').then(function (res) {
+    var el = document.getElementById('guru-statistik');
+    if (el && res && res.sukses && res.data) el.innerHTML = renderStatistikGuru(res.data);
+  });
+  panggilApi('ambilSemuaGuru', {}, 'POST').then(function (res) {
+    if (res && res.sukses && res.data && Array.isArray(res.data)) {
+      STATE.daftarGuru = res.data;
+      renderDaftarGuruKeWadah();
+    } else {
+      var wrap = document.getElementById('guru-content');
+      if (wrap) wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.warning + '<h3>Gagal memuat data</h3><p>' + escapeHtml((res && res.pesan) || 'Terjadi kesalahan.') + '</p><button class="btn btn-outline" onclick="muatGuru()" type="button">' + SVG_ICONS.refresh + '<span>Coba Lagi</span></button></div>';
+    }
+  });
+}
+
+// ----- Form Tambah/Edit -----
+
+function renderHalamanTambahGuru(wadah) {
+  if (!pastikanLoginAdmin()) return;
+  renderFormGuru(wadah, null);
+}
+
+function renderHalamanEditGuru(wadah, id) {
+  if (!pastikanLoginAdmin()) return;
+  wadah.innerHTML = '<div class="loading-box"><div class="spinner"></div><p class="teks-lembut">Memuat data guru...</p></div>';
+  panggilApi('ambilGuruBerdasarkanId', { id: id }, 'POST').then(function (res) {
+    if (res && res.sukses && res.data) renderFormGuru(wadah, res.data);
+    else wadah.innerHTML = '<div class="admin-placeholder"><div class="admin-placeholder-ikon">' + SVG_ICONS.warning + '</div><h2>Data tidak ditemukan</h2><p>Guru dengan ID tersebut tidak ada.</p><a class="btn btn-utama mt-4" href="#/admin/guru">Kembali ke Data Guru</a></div>';
+  });
+}
+
+function renderFormGuru(wadah, dataEdit) {
+  var g = dataEdit || {};
+  var adalahEdit = !!dataEdit;
+  var judul = adalahEdit ? 'Edit Guru' : 'Tambah Guru Baru';
+  var deskripsi = adalahEdit ? 'Perbarui data guru ' + (g.nama_lengkap || '') : 'Lengkapi data guru baru';
+
+  var html = '' +
+    '<div class="admin-halaman-header">' +
+      '<div class="admin-halaman-judul-wrap">' +
+        '<a class="btn btn-ghost btn-sm" href="#/admin/guru" style="margin-bottom:8px">' + SVG_ICONS.arrowLeft + '<span>Kembali</span></a>' +
+        '<h1 class="admin-halaman-judul">' + escapeHtml(judul) + '</h1>' +
+        '<p class="admin-halaman-deskripsi">' + escapeHtml(deskripsi) + '</p>' +
+      '</div>' +
+    '</div>' +
+    '<form id="form-guru" onsubmit="submitFormGuru(event)">' +
+      '<input id="guru-id" type="hidden" value="' + escapeHtml(g.id || '') + '">' +
+      '<div class="form-card">' +
+        '<div class="form-card-judul">' + SVG_ICONS.camera + '<span>Foto Guru</span></div>' +
+        '<div class="foto-uploader">' +
+          '<div class="foto-preview" id="foto-preview" onclick="pilihFileFotoGuru()">' +
+            (g.foto_url ? '<img id="foto-img" src="' + escapeHtml(g.foto_url) + '">' : '<div class="foto-preview-placeholder" id="foto-placeholder">' + SVG_ICONS.camera + '<span>Klik untuk pilih foto<br>(3:4)</span></div>') +
+          '</div>' +
+          '<input accept="image/jpeg,image/png,image/webp" id="input-foto-guru" style="display:none" type="file">' +
+          '<input id="foto-url-guru" type="hidden" value="' + escapeHtml(g.foto_url || '') + '">' +
+          '<div class="foto-aksi">' +
+            '<button class="btn btn-outline btn-sm" onclick="pilihFileFotoGuru()" type="button">' + SVG_ICONS.camera + '<span>Pilih Foto</span></button>' +
+            '<button class="btn btn-ghost btn-sm" onclick="hapusFotoGuru()" type="button">' + SVG_ICONS.trash + '<span>Hapus</span></button>' +
+          '</div>' +
+          '<div class="form-hint" style="text-align:center">Format JPG/PNG/WebP, maks 2 MB. Akan otomatis di-crop 3:4.</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="form-card">' +
+        '<div class="form-card-judul">' + SVG_ICONS.userCheck + '<span>Akun Login</span></div>' +
+        '<div class="form-grid form-grid-2">' +
+          field('Email', 'guru-email', g.email, true, 'email', 'email@contoh.com') +
+          field('Password' + (adalahEdit ? ' (kosongkan jika tidak diubah)' : ''), 'guru-password', '', !adalahEdit, 'password', adalahEdit ? '(tidak diubah)' : 'Minimal 6 karakter') +
+        '</div>' +
+        '<div class="form-hint" style="margin-top:8px">Email ini digunakan guru untuk login. Password minimal 6 karakter.</div>' +
+      '</div>' +
+      '<div class="form-card">' +
+        '<div class="form-card-judul">' + SVG_ICONS.userCheck + '<span>Biodata Guru</span></div>' +
+        '<div class="form-grid form-grid-2">' +
+          field('Nama Lengkap', 'guru-nama_lengkap', g.nama_lengkap, true, 'text', 'Nama lengkap dengan gelar') +
+          field('NIP', 'guru-nip', g.nip, false, 'text', 'Nomor Induk Pegawai (opsional)') +
+          selectField('Jenis Kelamin', 'guru-jenis_kelamin', g.jenis_kelamin, true, [{ v: 'L', t: 'Laki-laki (Putra)' }, { v: 'P', t: 'Perempuan (Putri)' }]) +
+          field('Jabatan', 'guru-jabatan', g.jabatan, false, 'text', 'Contoh: Mudir, Guru Fiqh') +
+          field('Tempat Lahir', 'guru-tempat_lahir', g.tempat_lahir, false, 'text', 'Kota/kabupaten lahir') +
+          field('Tanggal Lahir', 'guru-tanggal_lahir', g.tanggal_lahir, false, 'date', '') +
+          field('No HP', 'guru-no_hp', g.no_hp, false, 'tel', '08xx-xxxx-xxxx') +
+          field('Alumni', 'guru-alumni', g.alumni, false, 'text', 'Contoh: Alumni Pesantren') +
+        '</div>' +
+        '<div style="margin-top:16px">' + textareaField('Alamat', 'guru-alamat', g.alamat, false, 'Alamat lengkap') + '</div>' +
+        (adalahEdit ?
+          '<div style="margin-top:16px">' + selectField('Status', 'guru-status', g.status || 'aktif', true, [{ v: 'aktif', t: 'Aktif' }, { v: 'nonaktif', t: 'Nonaktif' }]) + '</div>'
+          : '') +
+      '</div>' +
+      '<div class="form-tombol" style="display:flex;gap:12px;justify-content:flex-end;margin-bottom:32px">' +
+        '<a class="btn btn-ghost" href="#/admin/guru">Batal</a>' +
+        '<button class="btn btn-utama" id="tombol-simpan-guru" type="submit">' + (adalahEdit ? 'Simpan Perubahan' : 'Simpan Guru') + '</button>' +
+      '</div>' +
+    '</form>';
+  wadah.innerHTML = html;
+  var inpFile = document.getElementById('input-foto-guru');
+  if (inpFile) inpFile.addEventListener('change', onFileFotoGuruDipilih);
+}
+
+// ----- Upload Foto Guru (pakai crop yang sama) -----
+
+function pilihFileFotoGuru() { var inp = document.getElementById('input-foto-guru'); if (inp) inp.click(); }
+
+function onFileFotoGuruDipilih(e) {
+  var file = e.target.files && e.target.files[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { tampilkanToast('Ukuran file maksimal 2 MB.', 'gagal'); return; }
+  var reader = new FileReader();
+  reader.onload = function (ev) { bukaCropModalGuru(ev.target.result); };
+  reader.readAsDataURL(file);
+}
+
+/**
+ * Crop foto guru — reuse logika crop santri, tapi output ke preview guru.
+ */
+function bukaCropModalGuru(dataUrl) {
+  var img = new Image();
+  img.onload = function () {
+    STATE.cropImage = img;
+    STATE.cropX = 0;
+    STATE.cropY = 0;
+    var skalaAwal = Math.min(360 / img.width, 480 / img.height);
+    if (skalaAwal > 1) skalaAwal = 1;
+    STATE.cropSkala = skalaAwal;
+
+    var html = '' +
+      '<div class="crop-area" id="crop-area"><canvas id="crop-canvas"></canvas><div class="crop-overlay"><div class="crop-frame"></div></div></div>' +
+      '<div class="crop-info">Geser foto untuk atur posisi. Gunakan slider di bawah untuk memperbesar/memperkecil.</div>' +
+      '<div class="crop-zoom-controls">' +
+        '<button class="crop-zoom-tombol" onclick="zoomOutCrop()" type="button" title="Perkecil">-</button>' +
+        '<input class="crop-zoom-slider" id="crop-zoom-slider" max="3" min="0.2" step="0.05" type="range" value="' + STATE.cropSkala + '" oninput="onZoomSliderChange(this.value)"/>' +
+        '<button class="crop-zoom-tombol" onclick="zoomInCrop()" type="button" title="Perbesar">+</button>' +
+        '<span class="crop-zoom-label" id="crop-zoom-label">' + Math.round(STATE.cropSkala * 100) + '%</span>' +
+      '</div>' +
+      '<div style="text-align:center;margin-top:12px"><button class="btn btn-ghost btn-sm" onclick="resetCrop()" type="button">' + SVG_ICONS.rotate + '<span>Reset</span></button></div>';
+    var footer = '<button class="btn btn-ghost" onclick="tutupCrop()" type="button">Batal</button><button class="btn btn-utama" onclick="simpanCropGuru()" type="button">Terapkan</button>';
+    bukaModal('Atur Posisi Foto', html, footer, 'lg');
+    setTimeout(gambarCrop, 50);
+    pasangEventCrop();
+    pasangEventCropScroll();
+  };
+  img.src = dataUrl;
+}
+
+function simpanCropGuru() {
+  var area = document.getElementById('crop-area');
+  if (!area || !STATE.cropImage) return;
+  var w = area.clientWidth;
+  var h = area.clientHeight;
+  var rasioFrame = 3 / 4;
+  var frameW = w * 0.75;
+  var frameH = frameW / rasioFrame;
+  if (frameH > h * 0.9) { frameH = h * 0.9; frameW = frameH * rasioFrame; }
+  var OUTPUT_W = 300, OUTPUT_H = 400;
+  var canvasOut = document.createElement('canvas');
+  canvasOut.width = OUTPUT_W;
+  canvasOut.height = OUTPUT_H;
+  var ctx = canvasOut.getContext('2d');
+  var img = STATE.cropImage;
+  var skala = STATE.cropSkala * (OUTPUT_W / frameW);
+  var iw = img.width * skala;
+  var ih = img.height * skala;
+  var x = OUTPUT_W / 2 - iw / 2 + STATE.cropX * (OUTPUT_W / frameW);
+  var y = OUTPUT_H / 2 - ih / 2 + STATE.cropY * (OUTPUT_H / frameH);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, OUTPUT_W, OUTPUT_H);
+  ctx.drawImage(img, x, y, iw, ih);
+  var dataUrl = canvasOut.toDataURL('image/jpeg', 0.85);
+  var preview = document.getElementById('foto-preview');
+  if (preview) preview.innerHTML = '<img id="foto-img" src="' + dataUrl + '">';
+  STATE.cropImage = null;
+  tutupModal();
+  tampilkanToast('Foto siap. Klik Simpan untuk mengunggah.', 'info', 'Foto Siap');
+  var inputFoto = document.getElementById('input-foto-guru');
+  if (inputFoto) inputFoto.dataset.croppedData = dataUrl;
+}
+
+function hapusFotoGuru() {
+  var preview = document.getElementById('foto-preview');
+  var url = document.getElementById('foto-url-guru');
+  if (preview) preview.innerHTML = '<div class="foto-preview-placeholder" id="foto-placeholder">' + SVG_ICONS.camera + '<span>Klik untuk pilih foto<br>(3:4)</span></div>';
+  if (url) url.value = '';
+  var inpFoto = document.getElementById('input-foto-guru');
+  if (inpFoto) inpFoto.dataset.croppedData = '';
+  tampilkanToast('Foto dihapus.', 'info');
+}
+
+// ----- Submit Form Guru -----
+
+function submitFormGuru(e) {
+  if (e) e.preventDefault();
+  var idEdit = document.getElementById('guru-id').value;
+  var adalahEdit = !!idEdit;
+  var inpFoto = document.getElementById('input-foto-guru');
+  var croppedData = inpFoto ? inpFoto.dataset.croppedData : '';
+  var fotoUrlLama = document.getElementById('foto-url-guru').value;
+  var tombol = document.getElementById('tombol-simpan-guru');
+  if (tombol) { tombol.disabled = true; tombol.innerHTML = 'Menyimpan...'; }
+
+  if (croppedData) {
+    var namaFile = 'guru-' + (document.getElementById('guru-nama_lengkap').value || 'baru');
+    panggilApi('uploadFotoSantri', { base64Data: croppedData, namaFile: namaFile }, 'POST').then(function (resUpload) {
+      if (resUpload && resUpload.sukses && resUpload.data && resUpload.data.url) {
+        prosesSimpanGuru(idEdit, adalahEdit, resUpload.data.url, tombol);
+      } else {
+        if (tombol) { tombol.disabled = false; tombol.innerHTML = adalahEdit ? 'Simpan Perubahan' : 'Simpan Guru'; }
+        tampilkanToast('Gagal upload foto: ' + ((resUpload && resUpload.pesan) || 'Unknown'), 'gagal');
+      }
+    });
+  } else {
+    prosesSimpanGuru(idEdit, adalahEdit, fotoUrlLama, tombol);
+  }
+}
+
+function prosesSimpanGuru(idEdit, adalahEdit, fotoUrl, tombol) {
+  var data = {
+    email: ambilNilai('guru-email'),
+    password: ambilNilai('guru-password'),
+    nama_lengkap: ambilNilai('guru-nama_lengkap'),
+    nip: ambilNilai('guru-nip'),
+    jenis_kelamin: ambilNilai('guru-jenis_kelamin'),
+    jabatan: ambilNilai('guru-jabatan'),
+    tempat_lahir: ambilNilai('guru-tempat_lahir'),
+    tanggal_lahir: ambilNilai('guru-tanggal_lahir'),
+    no_hp: ambilNilai('guru-no_hp'),
+    alamat: ambilNilai('guru-alamat'),
+    alumni: ambilNilai('guru-alumni'),
+    foto_url: fotoUrl || '',
+    status: ambilNilai('guru-status') || 'aktif'
+  };
+
+  if (!data.nama_lengkap) { tampilkanToast('Nama lengkap wajib diisi.', 'gagal'); if (tombol) { tombol.disabled = false; tombol.innerHTML = adalahEdit ? 'Simpan Perubahan' : 'Simpan Guru'; } return; }
+  if (!data.email) { tampilkanToast('Email wajib diisi.', 'gagal'); if (tombol) { tombol.disabled = false; tombol.innerHTML = adalahEdit ? 'Simpan Perubahan' : 'Simpan Guru'; } return; }
+  if (!adalahEdit && !data.password) { tampilkanToast('Password wajib diisi.', 'gagal'); if (tombol) { tombol.disabled = false; tombol.innerHTML = adalahEdit ? 'Simpan Perubahan' : 'Simpan Guru'; } return; }
+  if (!adalahEdit && data.password.length < 6) { tampilkanToast('Password minimal 6 karakter.', 'gagal'); if (tombol) { tombol.disabled = false; tombol.innerHTML = adalahEdit ? 'Simpan Perubahan' : 'Simpan Guru'; } return; }
+  if (!data.jenis_kelamin) { tampilkanToast('Jenis kelamin wajib diisi.', 'gagal'); if (tombol) { tombol.disabled = false; tombol.innerHTML = adalahEdit ? 'Simpan Perubahan' : 'Simpan Guru'; } return; }
+
+  var aksi = adalahEdit ? 'perbaruiGuru' : 'tambahGuru';
+  var muatan = adalahEdit ? { id: idEdit, data: data } : { data: data };
+
+  panggilApi(aksi, muatan, 'POST').then(function (res) {
+    if (tombol) { tombol.disabled = false; tombol.innerHTML = adalahEdit ? 'Simpan Perubahan' : 'Simpan Guru'; }
+    if (res && res.sukses) {
+      tampilkanToast(adalahEdit ? 'Data guru berhasil diperbarui.' : 'Guru baru berhasil ditambahkan.', 'sukses');
+      window.location.hash = '#/admin/guru';
+    } else {
+      tampilkanToast((res && res.pesan) || 'Gagal menyimpan data.', 'gagal');
+    }
+  }).catch(function (err) {
+    if (tombol) { tombol.disabled = false; tombol.innerHTML = adalahEdit ? 'Simpan Perubahan' : 'Simpan Guru'; }
+    logDebug('Gagal simpan guru:', err);
+    tampilkanToast('Terjadi kesalahan saat menyimpan.', 'gagal');
+  });
+}
+
+// ----- Detail Guru -----
+
+function renderHalamanDetailGuru(wadah, id) {
+  if (!pastikanLoginAdmin()) return;
+  wadah.innerHTML = '<div class="loading-box"><div class="spinner"></div><p class="teks-lembut">Memuat profil guru...</p></div>';
+  panggilApi('ambilGuruBerdasarkanId', { id: id }, 'POST').then(function (res) {
+    if (!res || !res.sukses || !res.data) {
+      wadah.innerHTML = '<div class="admin-placeholder"><div class="admin-placeholder-ikon">' + SVG_ICONS.warning + '</div><h2>Data tidak ditemukan</h2><p>' + escapeHtml((res && res.pesan) || '') + '</p><a class="btn btn-utama mt-4" href="#/admin/guru">Kembali</a></div>';
+      return;
+    }
+    wadah.innerHTML = renderProfilGuruLengkap(res.data);
+  });
+}
+
+function renderProfilGuruLengkap(g) {
+  var fotoHtml = g.foto_url ? '<img alt="' + escapeHtml(g.nama_lengkap) + '" src="' + escapeHtml(g.foto_url) + '">' : escapeHtml(ambilInisial(g.nama_lengkap));
+  var labelStatus = g.status === 'aktif' ? 'AKTIF' : 'NONAKTIF';
+  var html = '' +
+    '<div class="admin-halaman-header"><div class="admin-halaman-judul-wrap"><a class="btn btn-ghost btn-sm" href="#/admin/guru" style="margin-bottom:8px">' + SVG_ICONS.arrowLeft + '<span>Kembali ke Data Guru</span></a></div></div>' +
+    '<div class="profil-header">' +
+      '<div class="profil-foto-besar">' + fotoHtml + '</div>' +
+      '<div class="profil-info">' +
+        '<h1 class="profil-nama">' + escapeHtml(g.nama_lengkap || '-') + '</h1>' +
+        '<div class="profil-nis">' + (g.nip ? 'NIP: ' + escapeHtml(g.nip) : '') + (g.email ? '  -  ' + escapeHtml(g.email) : '') + '</div>' +
+        '<div class="profil-tag">' +
+          '<span class="profil-tag-item">' + labelStatus + '</span>' +
+          '<span class="profil-tag-item">' + escapeHtml(labelJenisKelamin(g.jenis_kelamin) || '-') + '</span>' +
+          '<span class="profil-tag-item">' + escapeHtml(g.jabatan || 'Guru') + '</span>' +
+        '</div>' +
+        '<div class="profil-aksi">' +
+          '<a class="btn btn-aksen" href="#/admin/guru/edit/' + escapeHtml(g.id) + '">' + SVG_ICONS.edit + '<span>Edit</span></a>' +
+          '<button class="btn btn-outline-putih" onclick="konfirmasiResetPasswordGuru(\'' + escapeHtml(g.id) + '\',\'' + escapeHtml(g.nama_lengkap) + '\')" type="button">' + SVG_ICONS.lock + '<span>Reset Password</span></button>' +
+          '<button class="btn btn-outline-putih" onclick="konfirmasiHapusGuru(\'' + escapeHtml(g.id) + '\',\'' + escapeHtml(g.nama_lengkap) + '\')" type="button">' + SVG_ICONS.trash + '<span>Nonaktifkan</span></button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="form-card">' +
+      '<div class="form-card-judul">' + SVG_ICONS.userCheck + '<span>Biodata Guru</span></div>' +
+      baris('Nama Lengkap', g.nama_lengkap) +
+      baris('NIP', g.nip) +
+      baris('Jenis Kelamin', labelJenisKelamin(g.jenis_kelamin)) +
+      baris('Jabatan', g.jabatan) +
+      baris('Tempat Lahir', g.tempat_lahir) +
+      baris('Tanggal Lahir', formatTanggalIndo(g.tanggal_lahir)) +
+      baris('No HP', g.no_hp) +
+      baris('Alamat', g.alamat) +
+      baris('Alumni', g.alumni) +
+    '</div>' +
+    '<div class="form-card">' +
+      '<div class="form-card-judul">' + SVG_ICONS.lock + '<span>Akun Login</span></div>' +
+      baris('Email', g.email) +
+      baris('Status Akun', g.akun_status === 'aktif' ? 'Aktif' : 'Nonaktif') +
+      baris('ID Akun', g.pengguna_id) +
+    '</div>';
+  return html;
+}
+
+// ----- Hapus (Soft Delete) -----
+
+function konfirmasiHapusGuru(id, nama) {
+  var html = '<p class="modal-konfirmasi-tanya">Yakin ingin menonaktifkan guru <span class="modal-konfirmasi-nama">' + escapeHtml(nama) + '</span>?</p><p class="teks-lembut" style="font-size:13px">Guru akan diubah menjadi <strong>nonaktif</strong>. Akun login ikut dinonaktifkan, data tetap tersimpan dan dapat dipulihkan.</p>';
+  var footer = '<button class="btn btn-ghost" onclick="tutupModal()" type="button">Batal</button><button class="btn btn-danger" onclick="hapusGuruProses(\'' + escapeHtml(id) + '\')" type="button">Nonaktifkan</button>';
+  bukaModal('Konfirmasi Nonaktifkan', html, footer);
+}
+
+function hapusGuruProses(id) {
+  tutupModal();
+  panggilApi('hapusGuru', { id: id }, 'POST').then(function (res) {
+    if (res && res.sukses) { tampilkanToast('Guru berhasil dinonaktifkan.', 'sukses'); muatGuru(); }
+    else tampilkanToast((res && res.pesan) || 'Gagal menghapus.', 'gagal');
+  });
+}
+
+// ----- Reset Password Guru -----
+
+function konfirmasiResetPasswordGuru(id, nama) {
+  var html = '' +
+    '<p class="modal-konfirmasi-tanya">Reset password guru <span class="modal-konfirmasi-nama">' + escapeHtml(nama) + '</span>?</p>' +
+    '<p class="teks-lembut" style="font-size:13px;margin-bottom:16px">Sistem akan membuat password acak baru. Salin password tersebut dan berikan ke guru yang bersangkutan.</p>' +
+    '<div style="background:var(--warna-utama-lembut);padding:12px;border-radius:8px;font-size:13px;color:var(--warna-teks-lembut);border-left:3px solid var(--warna-utama)">Password lama tidak dapat dilihat (di-hash). Reset akan memaksa guru login ulang di semua perangkat.</div>';
+  var footer = '<button class="btn btn-ghost" onclick="tutupModal()" type="button">Batal</button><button class="btn btn-utama" onclick="aksiResetPasswordGuru(\'' + escapeHtml(id) + '\')" type="button">Reset Password</button>';
+  bukaModal('Reset Password', html, footer);
+}
+
+function aksiResetPasswordGuru(id) {
+  tutupModal();
+  panggilApi('resetPasswordGuru', { id: id }, 'POST').then(function (res) {
+    if (res && res.sukses && res.data && res.data.password_baru) {
+      var html = '' +
+        '<p class="modal-konfirmasi-tanya">Password baru untuk <strong>' + escapeHtml(res.data.nama || '') + '</strong>:</p>' +
+        '<div style="background:var(--warna-latar);padding:16px;border-radius:8px;text-align:center;margin:16px 0"><code style="font-size:20px;font-weight:700;letter-spacing:2px;color:var(--warna-utama-tua);font-family:monospace">' + escapeHtml(res.data.password_baru) + '</code></div>' +
+        '<p class="teks-lembut" style="font-size:13px">Salin password ini dan berikan ke guru. Password <strong>tidak bisa dilihat lagi</strong> setelah modal ini ditutup.</p>';
+      var footer = '<button class="btn btn-utama" onclick="tutupModal()" type="button">Sudah Dicatat</button>';
+      bukaModal('Password Baru', html, footer);
+      muatGuru();
+    } else {
+      tampilkanToast((res && res.pesan) || 'Gagal reset password.', 'gagal');
+    }
+  });
+}
+
+// ----- Halaman Rekan Guru (untuk Guru) -----
+
+function renderHalamanRekanGuru(wadah) {
+  if (!pastikanLoginGuruWali && !pastikanLoginAdmin) { return; }
+  var role = ambilRoleSaatIni();
+  if (role !== 'guru' && role !== 'admin') { redirectKeDashboard(); return; }
+
+  var routeKembali = role === 'guru' ? '#/guru' : '#/admin';
+  wadah.innerHTML = '' +
+    '<div class="admin-halaman-header">' +
+      '<div class="admin-halaman-judul-wrap">' +
+        '<a class="btn btn-ghost btn-sm" href="' + routeKembali + '" style="margin-bottom:8px">' + SVG_ICONS.arrowLeft + '<span>Kembali</span></a>' +
+        '<h1 class="admin-halaman-judul">Rekan Guru</h1>' +
+        '<p class="admin-halaman-deskripsi">Daftar guru dan staf ELKAROM</p>' +
+      '</div>' +
+    '</div>' +
+    '<div id="rekan-guru-content"><div class="loading-box"><div class="spinner"></div><p class="teks-lembut">Memuat daftar rekan guru...</p></div></div>';
+
+  panggilApi('ambilGuruUntukRekan', {}, 'POST').then(function (res) {
+    var wrap = document.getElementById('rekan-guru-content');
+    if (!wrap) return;
+    if (!res || !res.sukses || !res.data || res.data.length === 0) {
+      wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.userCheck + '<h3>Belum ada data guru</h3></div>';
+      return;
+    }
+    var html = '<div class="guru-counter">Menampilkan <strong>' + res.data.length + '</strong> guru dan staf</div>';
+    html += '<div class="guru-grid">';
+    res.data.forEach(function (g) {
+      var fotoHtml = g.foto_url ? '<img alt="' + escapeHtml(g.nama_lengkap) + '" loading="lazy" src="' + escapeHtml(g.foto_url) + '">' : '<span class="guru-inisial">' + escapeHtml(ambilInisial(g.nama_lengkap)) + '</span>';
+      var alumniHtml = g.alumni ? '<span class="guru-alumni">' + escapeHtml(g.alumni) + '</span>' : '';
+      html += '<div class="guru-card"><div class="guru-foto">' + fotoHtml + '</div><div class="guru-isi"><h3 class="guru-nama">' + escapeHtml(g.nama_lengkap) + '</h3><p class="guru-jabatan">' + escapeHtml(g.jabatan || 'Guru') + '</p>' + alumniHtml + '</div></div>';
+    });
+    html += '</div>';
+    wrap.innerHTML = html;
+  });
+}
+  
 /* ============================================================
  * RENDER PUBLIK
  * ============================================================ */
@@ -2611,7 +3230,7 @@ var DAFTAR_HALAMAN = {
   '#/admin/ppdb': { judul: 'Data PPDB', render: null },
   '#/admin/pelanggaran': { judul: 'Pelanggaran', render: null },
   '#/admin/kesehatan': { judul: 'Kesehatan', render: null },
-  '#/admin/guru': { judul: 'Data Guru dan Staf', render: null },
+  '#/admin/guru': { judul: 'Data Guru dan Staf', render: renderHalamanGuru },
   '#/admin/guru-jadwal': { judul: 'Jadwal Guru', render: null },
   '#/admin/guru-absensi': { judul: 'Absensi Guru', render: null },
   '#/admin/wali': { judul: 'Data Wali Santri', render: null },
@@ -2643,6 +3262,8 @@ var DAFTAR_HALAMAN = {
   '#/guru/jadwal': { judul: 'Jadwal Pelajaran', render: function (w) { renderPlaceholderGuruWali(w, 'Jadwal Pelajaran'); } },
   '#/guru/nilai': { judul: 'Nilai', render: function (w) { renderPlaceholderGuruWali(w, 'Nilai'); } },
   '#/guru/papan-info': { judul: 'Papan Info', render: renderHalamanPapanInfoReadOnly },
+  '#/guru/rekan-guru': { judul: 'Rekan Guru', render: renderHalamanRekanGuru },
+
 
   // Route wali
   '#/wali': { judul: 'Dashboard Wali', render: renderDashboardWali },
@@ -2665,7 +3286,10 @@ function tanganiRuteInti() {
   else if (hash.indexOf('#/admin/pengumuman/tambah') === 0) ruteDinamis = { render: function (w) { renderHalamanTambahPapanInfo(w); }, judul: 'Tambah Papan Info' };
   else if (hash.indexOf('#/admin/pengumuman/edit/') === 0) { var idEditPgm = hash.replace('#/admin/pengumuman/edit/', ''); ruteDinamis = { render: function (w) { renderHalamanEditPapanInfo(w, idEditPgm); }, judul: 'Edit Papan Info' }; }
   else if (hash.indexOf('#/admin/pengumuman/lihat/') === 0) { var idLihatPgm = hash.replace('#/admin/pengumuman/lihat/', ''); ruteDinamis = { render: function (w) { renderHalamanDetailPapanInfo(w, idLihatPgm); }, judul: 'Detail Papan Info' }; }
-
+  else if (hash.indexOf('#/admin/guru/tambah') === 0) ruteDinamis = { render: function (w) { renderHalamanTambahGuru(w); }, judul: 'Tambah Guru' };
+  else if (hash.indexOf('#/admin/guru/edit/') === 0) { var idEditGuru = hash.replace('#/admin/guru/edit/', ''); ruteDinamis = { render: function (w) { renderHalamanEditGuru(w, idEditGuru); }, judul: 'Edit Guru' }; }
+  else if (hash.indexOf('#/admin/guru/lihat/') === 0) { var idLihatGuru = hash.replace('#/admin/guru/lihat/', ''); ruteDinamis = { render: function (w) { renderHalamanDetailGuru(w, idLihatGuru); }, judul: 'Profil Guru' }; }
+  
   var halaman = ruteDinamis || DAFTAR_HALAMAN[hash];
   STATE.judulHalaman = halaman ? halaman.judul : 'Halaman Tidak Ditemukan';
   perbaruiJudulHalaman();
