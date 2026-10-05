@@ -886,7 +886,7 @@ function renderItemFilter(nilai, label) {
   return '<button class="dropdown-filter-item' + aktif + '" onclick="setFilterSantri(\'' + nilai + '\')" type="button"><span>' + escapeHtml(label) + '</span>' + (STATE.filter === nilai ? SVG_ICONS.check : '') + '</button>';
 }
 
-function renderItemFilterGuru(nilai, label) {
+function renderItemFilterSantriGuru(nilai, label) {
   var aktif = STATE.filter === nilai ? ' aktif' : '';
   return '<button class="dropdown-filter-item' + aktif + '" onclick="setFilterSantriGuru(\'' + nilai + '\')" type="button"><span>' + escapeHtml(label) + '</span>' + (STATE.filter === nilai ? SVG_ICONS.check : '') + '</button>';
 }
@@ -1207,11 +1207,11 @@ function renderHalamanSantriGuru(wadah) {
     '<div class="dropdown-filter">' +
       '<button class="dropdown-filter-tombol" onclick="toggleDropdownFilter(\'dropdown-filter-santri\')" type="button">' + SVG_ICONS.filter + '<span class="dropdown-filter-label">Filter:</span><span id="label-filter-santri">' + ambilLabelFilter(STATE.filter) + '</span>' + SVG_ICONS.chevronDown + '</button>' +
       '<div class="dropdown-filter-menu" id="dropdown-filter-santri">' +
-        renderItemFilterGuru('semua', 'Semua Santri') +
-        renderItemFilterGuru('aktif', 'Aktif') +
-        renderItemFilterGuru('alumni', 'Alumni') +
-        renderItemFilterGuru('putra', 'Putra') +
-        renderItemFilterGuru('putri', 'Putri') +
+        renderItemFilterSantriGuru('semua', 'Semua Santri') +
+        renderItemFilterSantriGuru('aktif', 'Aktif') +
+        renderItemFilterSantriGuru('alumni', 'Alumni') +
+        renderItemFilterSantriGuru('putra', 'Putra') +
+        renderItemFilterSantriGuru('putri', 'Putri') +
       '</div>' +
     '</div>' +
   '</div>' +
