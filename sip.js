@@ -1,11 +1,10 @@
-
 var KONFIG = {
   URL_API_GAS: 'https://script.google.com/macros/s/AKfycby2rGM3Hw7WejiSZxCk43g553fy1Z7ShbuCvkorwlNDtlUui2bu9lOeq7zdXsEXBTI/exec',
   URL_BLOG: 'https://elkarom.blogspot.com',
   LABEL_ARTIKEL: 'Pena Pesantren',
   NAMA_APP: 'ELKAROM',
   SLOGAN: 'Mulia dengan Ilmu',
-  VERSI: '7.5.0',
+  VERSI: '7.6.0',
   STORAGE_TOKEN: 'elkarom_token',
   STORAGE_PENGGUNA: 'elkarom_pengguna',
   STORAGE_TEMA: 'elkarom_tema',
@@ -108,6 +107,7 @@ var STATE = {
   pengaturan: null,
   grupPengaturanAktif: 'identitas'
 };
+
 var DATA_STATIS = {
   kerangkaKurikulum: [
     { icon: 'bookOpen', judul: 'Kurikulum Diniyah', deskripsi: 'Mengikuti kurikulum PKPPS (Pendidikan Kesetaraan Pondok Pesantren Salafi) yang berfokus pada kitab-kitab kuning khas pesantren.' },
@@ -143,39 +143,6 @@ var MENU_ADMIN = [
     { label: 'Ekstrakurikuler', route: '#/admin/ekskul', icon: 'star' },
     { label: 'Fasilitas', route: '#/admin/fasilitas', icon: 'grid' }
   ]},
-
-/**
- * Menu sidebar untuk role guru.
- * Lebih ringkas dari admin — hanya menu yang relevan.
- */
-var MENU_GURU = [
-  { grup: 'Menu Utama', tetap_terbuka: true, item: [
-    { label: 'Dashboard', route: '#/guru', icon: 'home' }
-  ]},
-  { grup: 'Akademik', item: [
-    { label: 'Absensi', route: '#/guru/absensi', icon: 'clipboard' },
-    { label: 'Jadwal Pelajaran', route: '#/guru/jadwal', icon: 'calendar' },
-    { label: 'Nilai', route: '#/guru/nilai', icon: 'trendingUp' }
-  ]},
-  { grup: 'Informasi', item: [
-    { label: 'Data Santri', route: '#/guru/santri', icon: 'users' },
-    { label: 'Papan Info', route: '#/guru/papan-info', icon: 'megaphone' }
-  ]}
-];
-
-/**
- * Menu sidebar untuk role wali.
- * Paling ringkas — hanya info.
- */
-var MENU_WALI = [
-  { grup: 'Menu Utama', tetap_terbuka: true, item: [
-    { label: 'Dashboard', route: '#/wali', icon: 'home' }
-  ]},
-  { grup: 'Informasi', item: [
-    { label: 'Papan Info', route: '#/wali/papan-info', icon: 'megaphone' }
-  ]}
-];
-
   { grup: 'Manajemen Santri', item: [
     { label: 'Data Santri', route: '#/admin/santri', icon: 'users' },
     { label: 'Profil Santri', route: '#/admin/profil-santri', icon: 'user' },
@@ -223,6 +190,38 @@ var MENU_WALI = [
   { grup: 'Sistem', item: [{ label: 'Pengaturan', route: '#/admin/pengaturan', icon: 'settings' }] }
 ];
 
+/**
+ * Menu sidebar untuk role guru.
+ * Lebih ringkas dari admin — hanya menu yang relevan.
+ */
+var MENU_GURU = [
+  { grup: 'Menu Utama', tetap_terbuka: true, item: [
+    { label: 'Dashboard', route: '#/guru', icon: 'home' }
+  ]},
+  { grup: 'Akademik', item: [
+    { label: 'Absensi', route: '#/guru/absensi', icon: 'clipboard' },
+    { label: 'Jadwal Pelajaran', route: '#/guru/jadwal', icon: 'calendar' },
+    { label: 'Nilai', route: '#/guru/nilai', icon: 'trendingUp' }
+  ]},
+  { grup: 'Informasi', item: [
+    { label: 'Data Santri', route: '#/guru/santri', icon: 'users' },
+    { label: 'Papan Info', route: '#/guru/papan-info', icon: 'megaphone' }
+  ]}
+];
+
+/**
+ * Menu sidebar untuk role wali.
+ * Paling ringkas — hanya info.
+ */
+var MENU_WALI = [
+  { grup: 'Menu Utama', tetap_terbuka: true, item: [
+    { label: 'Dashboard', route: '#/wali', icon: 'home' }
+  ]},
+  { grup: 'Informasi', item: [
+    { label: 'Papan Info', route: '#/wali/papan-info', icon: 'megaphone' }
+  ]}
+];
+
 var TAHUN_AJARAN_LIST = ['2026/2027', '2025/2026', '2024/2025', '2023/2024'];
 var TAHUN_AJARAN_AKTIF = '2026/2027';
 
@@ -267,7 +266,6 @@ function labelJenisKelamin(kode) {
   return '';
 }
 
-
 /**
  * Ambil role pengguna saat ini (dari STATE).
  * @return {string} 'admin' | 'guru' | 'wali' | ''
@@ -279,12 +277,12 @@ function ambilRoleSaatIni() {
 
 /**
  * Cek apakah route ini hanya untuk admin.
+ * FIX: hindari false-positive '#/administrator'.
  */
 function routeKhususAdmin(hash) {
-  // Route admin umum — kecuali dashboard per-role
   if (hash === '#/guru' || hash.indexOf('#/guru/') === 0) return false;
   if (hash === '#/wali' || hash.indexOf('#/wali/') === 0) return false;
-  return hash.indexOf('#/admin') === 0;
+  return hash === '#/admin' || hash.indexOf('#/admin/') === 0;
 }
 
 /**
@@ -315,7 +313,6 @@ function redirectKeDashboard() {
  * - Admin: MENU_ADMIN lengkap
  * - Guru: MENU_GURU
  * - Wali: MENU_WALI
- * (MENU_GURU & MENU_WALI didefinisikan di patch berikutnya)
  */
 function ambilMenuSesuaiRole() {
   var role = ambilRoleSaatIni();
@@ -431,8 +428,25 @@ function toggleTema() { var sekarang = document.documentElement.getAttribute('da
 function muatTemaTersimpan() { try { terapkanTema(localStorage.getItem(KONFIG.STORAGE_TEMA) || 'terang'); } catch (e) { terapkanTema('terang'); } }
 function muatStateSidebar() { try { if (localStorage.getItem(KONFIG.STORAGE_SIDEBAR) === 'ya') document.body.classList.add('sidebar-tertutup'); else document.body.classList.remove('sidebar-tertutup'); } catch (e) {} }
 function simpanStateSidebar(tertutup) { try { localStorage.setItem(KONFIG.STORAGE_SIDEBAR, tertutup ? 'ya' : 'tidak'); } catch (e) {} }
-function muatGrupTerbuka() { try { var s = localStorage.getItem(KONFIG.STORAGE_GRUP_TERBUKA); if (s) return JSON.parse(s); } catch (e) {} return ['Menu Utama']; }
-function simpanGrupTerbuka(daftar) { try { localStorage.setItem(KONFIG.STORAGE_GRUP_TERBUKA, JSON.stringify(daftar)); } catch (e) {} }
+
+/**
+ * FIX: grup terbuka disimpan per-role untuk hindari collision antar role.
+ * Baca dari key per-role, fallback ke key lama (backward compat).
+ */
+function muatGrupTerbuka() {
+  var role = ambilRoleSaatIni() || 'guest';
+  try {
+    var sPerRole = localStorage.getItem(KONFIG.STORAGE_GRUP_TERBUKA + '_' + role);
+    if (sPerRole) return JSON.parse(sPerRole);
+    var sLama = localStorage.getItem(KONFIG.STORAGE_GRUP_TERBUKA);
+    if (sLama) return JSON.parse(sLama);
+  } catch (e) {}
+  return ['Menu Utama'];
+}
+function simpanGrupTerbuka(daftar) {
+  var role = ambilRoleSaatIni() || 'guest';
+  try { localStorage.setItem(KONFIG.STORAGE_GRUP_TERBUKA + '_' + role, JSON.stringify(daftar)); } catch (e) {}
+}
 
 function perbaruiNavbar() {
   var tombolLogin = document.getElementById('tombol-login');
@@ -512,9 +526,10 @@ function renderMenuSidebar() {
   if (!wadah) return;
   var menuAktif = ambilMenuSesuaiRole();
   var grupTerbuka = muatGrupTerbuka();
+  var role = ambilRoleSaatIni() || 'guest';
   var html = '';
   menuAktif.forEach(function (grup, idx) {
-    var grupId = 'grup-' + idx;
+    var grupId = role + '-grup-' + idx;
     var tetapTerbuka = grup.tetap_terbuka === true;
     var terbuka = tetapTerbuka || grupTerbuka.indexOf(grupId) > -1;
     html += '<div class="sidebar-grup' + (terbuka ? ' terbuka' : '') + '" data-grup-id="' + grupId + '" data-tetap="' + (tetapTerbuka ? '1' : '0') + '">';
@@ -538,7 +553,9 @@ function toggleGrupSidebar(grupId) {
     if (semuaGrup[i].getAttribute('data-tetap') === '1') continue;
     semuaGrup[i].classList.remove('terbuka');
   }
-  var daftarTerbuka = ['Menu Utama'];
+  var daftarTerbuka = [];
+  var grupTetap = document.querySelectorAll('#sidebar-menu .sidebar-grup[data-tetap="1"]');
+  for (var k = 0; k < grupTetap.length; k++) daftarTerbuka.push(grupTetap[k].getAttribute('data-grup-id'));
   if (!sedangTerbuka) { grup.classList.add('terbuka'); daftarTerbuka.push(grupId); }
   simpanGrupTerbuka(daftarTerbuka);
 }
@@ -554,12 +571,41 @@ function tutupSidebarMobile() { document.body.classList.remove('sidebar-mobile-t
 function bukaSearch() { var overlay = document.getElementById('search-overlay'); if (!overlay) return; overlay.classList.add('tampil'); var input = document.getElementById('search-input'); if (input) { input.value = ''; setTimeout(function () { input.focus(); }, 100); } }
 function tutupSearch() { var overlay = document.getElementById('search-overlay'); if (overlay) overlay.classList.remove('tampil'); }
 
-/* MODUL DATA SANTRI */
+/* ============================================================
+ * ROLE GUARD
+ * ============================================================ */
+
+/**
+ * Pastikan login admin. Kalau tidak, redirect.
+ */
 function pastikanLoginAdmin() {
   if (!STATE.token || !STATE.pengguna) { window.location.hash = '#/login'; return false; }
-  if (STATE.pengguna.role !== 'admin') { tampilkanToast('Hanya admin yang bisa mengakses halaman ini.', 'gagal', 'Akses Ditolak'); window.location.hash = '#/admin'; return false; }
+  if (STATE.pengguna.role !== 'admin') {
+    tampilkanToast('Hanya admin yang bisa mengakses halaman ini.', 'gagal', 'Akses Ditolak');
+    redirectKeDashboard();
+    return false;
+  }
   return true;
 }
+
+/**
+ * Pastikan login guru atau wali. Dipakai halaman read-only.
+ */
+function pastikanLoginGuruWali() {
+  if (!STATE.token || !STATE.pengguna) { window.location.hash = '#/login'; return false; }
+  var role = STATE.pengguna.role;
+  if (role !== 'guru' && role !== 'wali') {
+    tampilkanToast('Hanya guru/wali yang bisa mengakses halaman ini.', 'gagal', 'Akses Ditolak');
+    redirectKeDashboard();
+    return false;
+  }
+  return true;
+}
+
+/* ============================================================
+ * MODUL DATA SANTRI
+ * ============================================================ */
+
 function buatHalamanHeader(judul, deskripsi, toolbarHtml, aksiHtml) {
   var html = '<div class="admin-halaman-header">';
   html += '<div class="admin-halaman-judul-wrap"><h1 class="admin-halaman-judul">' + escapeHtml(judul) + '</h1><p class="admin-halaman-deskripsi">' + escapeHtml(deskripsi) + '</p></div>';
@@ -881,6 +927,96 @@ function renderHalamanEditSantri(wadah, id) {
     else { wadah.innerHTML = '<div class="admin-placeholder"><div class="admin-placeholder-ikon">' + SVG_ICONS.warning + '</div><h2>Data tidak ditemukan</h2><p>Santri dengan ID tersebut tidak ada.</p><a class="btn btn-utama mt-4" href="#/admin/santri">Kembali ke Data Santri</a></div>'; }
   });
 }
+
+/**
+ * Halaman Data Santri versi GURU/WALI (read-only).
+ * TIDAK pakai pastikanLoginAdmin. Pakai pastikanLoginGuruWali.
+ * Tampilkan tombol kembali ke dashboard guru/wali.
+ */
+function renderHalamanSantriGuru(wadah) {
+  if (!pastikanLoginGuruWali()) return;
+  STATE.terpilih = {};
+
+  // Tentukan route kembali sesuai role
+  var role = ambilRoleSaatIni();
+  var routeKembali = role === 'guru' ? '#/guru' : '#/wali';
+
+  wadah.innerHTML = '' +
+    '<div class="admin-halaman-header">' +
+      '<div class="admin-halaman-judul-wrap">' +
+        '<a class="btn btn-ghost btn-sm" href="' + routeKembali + '" style="margin-bottom:8px">' + SVG_ICONS.arrowLeft + '<span>Kembali</span></a>' +
+        '<h1 class="admin-halaman-judul">Data Santri</h1>' +
+        '<p class="admin-halaman-deskripsi">Daftar santri ELKAROM (mode lihat saja)</p>' +
+      '</div>' +
+    '</div>' +
+    '<div id="santri-statistik">' + renderStatistikSantri() + '</div>' +
+    '<div class="santri-toolbar">' +
+      '<div class="santri-search">' + SVG_ICONS.search + '<input id="santri-search-input" placeholder="Cari nama, NIS, atau NISN..." type="text" value="' + escapeHtml(STATE.search) + '"></div>' +
+    '</div>' +
+    '<div id="santri-content"><div class="loading-box"><div class="spinner"></div><p class="teks-lembut">Memuat data santri...</p></div></div>';
+
+  // Pasang event search (reuse)
+  var inp = document.getElementById('santri-search-input');
+  if (inp) {
+    var tmr = null;
+    inp.addEventListener('input', function () {
+      clearTimeout(tmr);
+      var v = this.value;
+      tmr = setTimeout(function () { STATE.search = v; renderDaftarSantriKeWadah(); }, 250);
+    });
+  }
+
+  // Muat data (reuse muatSantri)
+  panggilApi('statistikSiswa', {}, 'POST').then(function (res) {
+    var el = document.getElementById('santri-statistik');
+    if (el && res && res.sukses && res.data) el.innerHTML = renderStatistikSantri(res.data);
+  });
+  panggilApi('ambilSemuaSiswa', {}, 'POST').then(function (res) {
+    if (res && res.sukses && res.data && Array.isArray(res.data)) { STATE.daftarSantri = res.data; renderDaftarSantriKeWaliWadah(); }
+    else {
+      var wrap = document.getElementById('santri-content');
+      if (wrap) wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.warning + '<h3>Gagal memuat data</h3><p>' + escapeHtml((res && res.pesan) || 'Terjadi kesalahan.') + '</p></div>';
+    }
+  });
+}
+
+/**
+ * Versi read-only dari renderDaftarSantriKeWadah.
+ * Tanpa checkbox, tanpa tombol aksi edit/hapus.
+ */
+function renderDaftarSantriKeWaliWadah() {
+  var wrap = document.getElementById('santri-content');
+  if (!wrap) return;
+  if (!STATE.daftarSantri || STATE.daftarSantri.length === 0) {
+    wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.users + '<h3>Belum ada data santri</h3></div>';
+    return;
+  }
+  var daftar = filterSantri(STATE.daftarSantri);
+  daftar = sortSantri(daftar);
+  if (daftar.length === 0) {
+    wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.search + '<h3>Tidak ada hasil</h3><p>Tidak ada santri yang cocok dengan pencarian.</p></div>';
+    return;
+  }
+  var html = '<div class="santri-info-count">Menampilkan <strong>' + daftar.length + '</strong> dari <strong>' + STATE.daftarSantri.length + '</strong> santri</div>';
+  // Card list (tampil di semua ukuran karena read-only, lebih ringkas)
+  html += '<div class="santri-card-list" style="display:flex">';
+  daftar.forEach(function (s) {
+    var badgeKelas = 'santri-badge ' + (s.status || 'aktif');
+    var labelStatus = s.status === 'aktif' ? 'AKTIF' : (s.status === 'alumni' ? 'ALUMNI' : 'NONAKTIF');
+    var fotoHtml = s.foto_url ? '<img alt="' + escapeHtml(s.nama_lengkap) + '" src="' + escapeHtml(s.foto_url) + '">' : escapeHtml(ambilInisial(s.nama_lengkap));
+    html += '<div class="santri-card ' + (s.status || '') + '">';
+    html += '<div class="santri-card-foto">' + fotoHtml + '</div>';
+    html += '<div class="santri-card-body">';
+    html += '<div class="santri-card-nama">' + escapeHtml(s.nama_lengkap || '-') + '</div>';
+    html += '<div class="santri-card-nis">NIS: ' + escapeHtml(s.nis || '-') + '</div>';
+    html += '<div class="santri-card-meta"><span class="' + badgeKelas + '">' + labelStatus + '</span><span>' + escapeHtml(labelJenisKelamin(s.jenis_kelamin) || '-') + '</span><span>' + escapeHtml(s.kelas_id || 'Belum ada kelas') + '</span></div>';
+    html += '</div></div>';
+  });
+  html += '</div>';
+  wrap.innerHTML = html;
+}
+
+
 function renderFormSantri(wadah, dataEdit) {
   var s = dataEdit || {};
   var adalahEdit = !!dataEdit;
@@ -889,7 +1025,6 @@ function renderFormSantri(wadah, dataEdit) {
   var ibu = ortu.ibu || {};
   var tahun = new Date().getFullYear();
   var tahunMasukDefault = s.tahun_masuk || String(tahun);
-  var nisDefault = s.nis || '';
   var judul = adalahEdit ? 'Edit Santri' : 'Tambah Santri Baru';
   var deskripsi = adalahEdit ? 'Perbarui data santri ' + (s.nama_lengkap || '') : 'Lengkapi data santri baru';
   var html = '' +
@@ -1265,7 +1400,6 @@ function gantiTabProfil(el, idTab) {
   });
 }
 
-
 /* ============================================================
  * MODUL PENGATURAN — INTEGRASI UI
  * ============================================================ */
@@ -1273,9 +1407,9 @@ function gantiTabProfil(el, idTab) {
 /**
  * Terapkan pengaturan ke UI.
  * - Warna → CSS variables
- * - Nama pesantren → navbar, hero, dll
- * - Logo → gambar navbar (kalau ada)
- * - Tahun ajaran aktif → STATE
+ * - Nama pesantren → navbar
+ * - Logo → gambar navbar (dengan escape URL)
+ * - Tahun ajaran aktif → STATE + update dropdown dashboard
  */
 function terapkanPengaturanKeUI(pengaturan) {
   if (!pengaturan) return;
@@ -1290,38 +1424,31 @@ function terapkanPengaturanKeUI(pengaturan) {
   // ----- Identitas -----
   var identitas = pengaturan.identitas || {};
   if (identitas.nama_pesantren) {
-    // Update semua elemen teks yang mengandung "ELKAROM" di navbar
-    var elNavNama = document.querySelectorAll('.navbar-nama-utama, .login-panel-judul, .hero-judul');
-    // Hati-hati: hero-judul punya struktur "Mulia dengan <span>Ilmu</span>" — jangan diubah sembarangan.
-    // Fokus ke nama pesantren di navbar saja.
     var semuaNavNama = document.querySelectorAll('.navbar-nama-utama');
     for (var i = 0; i < semuaNavNama.length; i++) {
       semuaNavNama[i].textContent = identitas.nama_pesantren;
     }
-    // Update title halaman
     document.title = identitas.nama_pesantren + ' - SIP';
   }
   if (identitas.logo_url) {
     var semuaLogo = document.querySelectorAll('.navbar-logo, .login-panel-logo');
     for (var j = 0; j < semuaLogo.length; j++) {
-      semuaLogo[j].innerHTML = '<img alt="Logo" src="' + identitas.logo_url + '" style="width:100%;height:100%;object-fit:contain;border-radius:8px">';
+      semuaLogo[j].innerHTML = '<img alt="Logo" src="' + escapeHtml(identitas.logo_url) + '" style="width:100%;height:100%;object-fit:contain;border-radius:8px">';
     }
   }
 
   // ----- Akademik -----
   var akademik = pengaturan.akademik || {};
   if (akademik.tahun_ajaran_aktif) {
-    // STATE.TAHUN_AJARAN_AKTIF adalah global var di file ini
-    if (typeof TAHUN_AJARAN_AKTIF !== 'undefined') {
-      TAHUN_AJARAN_AKTIF = akademik.tahun_ajaran_aktif;
-    }
+    TAHUN_AJARAN_AKTIF = akademik.tahun_ajaran_aktif;
+    // FIX P7: update label dropdown kalau sudah dirender
+    var elLabelTahun = document.getElementById('label-tahun-ajaran');
+    if (elLabelTahun) elLabelTahun.textContent = akademik.tahun_ajaran_aktif;
   }
 }
 
 /**
  * Ambil pengaturan publik dari server (tanpa token).
- * Dipanggil saat inisialisasi.
- * @return {Promise}
  */
 function muatPengaturanPublik() {
   return panggilApi('ambilPengaturanPublik', {}, 'POST').then(function (res) {
@@ -1338,14 +1465,10 @@ function muatPengaturanPublik() {
   });
 }
 
-
 /* ============================================================
  * MODUL PENGATURAN — HALAMAN ADMIN
  * ============================================================ */
 
-/**
- * Label grup pengaturan (frontend, mirror backend).
- */
 function labelGrupPengaturanUI(kode) {
   var peta = {
     'identitas':   'Identitas Pesantren',
@@ -1361,9 +1484,6 @@ function labelGrupPengaturanUI(kode) {
   return peta[kode] || kode;
 }
 
-/**
- * Ikon grup pengaturan.
- */
 function ikonGrupPengaturanUI(kode) {
   var peta = {
     'identitas':   'mosque',
@@ -1379,9 +1499,6 @@ function ikonGrupPengaturanUI(kode) {
   return SVG_ICONS[peta[kode]] || SVG_ICONS.infoCircle;
 }
 
-/**
- * Kelompokkan pengaturan per grup.
- */
 function kelompokkanPengaturan(daftar) {
   var hasil = {};
   daftar.forEach(function (p) {
@@ -1391,9 +1508,6 @@ function kelompokkanPengaturan(daftar) {
   return hasil;
 }
 
-/**
- * Render 1 field input pengaturan sesuai tipe.
- */
 function renderFieldPengaturan(item) {
   var kunci = item.kunci;
   var nilai = item.nilai || '';
@@ -1430,7 +1544,7 @@ function renderFieldPengaturan(item) {
   } else if (tipe === 'number') {
     inputHtml = '<input class="form-input" id="' + idField + '" data-kunci="' + escapeHtml(kunci) + '" type="number" value="' + escapeHtml(nilai) + '">';
   } else if (tipe === 'password') {
-    inputHtml = '<input class="form-input" id="' + idField + '" data-kunci="' + escapeHtml(kunci) + '" type="password" value="" placeholder="' + (nilai ? '(tersimpan — biarkan kosong jika tidak diubah)' : 'Masukkan nilai rahasia') + '" autocomplete="new-password">';
+    inputHtml = '<input class="form-input" id="' + idField + '" data-kunci="' + escapeHtml(kunci) + '" type="password" value="" placeholder="' + (nilai ? 'Tersimpan - biarkan kosong jika tidak diubah' : 'Masukkan nilai rahasia') + '" autocomplete="new-password">';
   } else {
     inputHtml = '<input class="form-input" id="' + idField + '" data-kunci="' + escapeHtml(kunci) + '" type="text" value="' + escapeHtml(nilai) + '">';
   }
@@ -1438,9 +1552,6 @@ function renderFieldPengaturan(item) {
   return '<div class="pengaturan-item">' + labelHtml + inputHtml + hintHtml + '</div>';
 }
 
-/**
- * Render form untuk satu grup pengaturan.
- */
 function renderFormGrupPengaturan(grup, items) {
   var ikonHtml = ikonGrupPengaturanUI(grup);
   var label = labelGrupPengaturanUI(grup);
@@ -1454,7 +1565,7 @@ function renderFormGrupPengaturan(grup, items) {
     html += renderFieldPengaturan(item);
   });
 
-  html += '</div>'; // pengaturan-list
+  html += '</div>';
   html += '<div class="pengaturan-aksi">';
   html += '<button class="btn btn-outline" onclick="aksiResetGrupPengaturan(\'' + escapeHtml(grup) + '\')" type="button">' + SVG_ICONS.refresh + '<span>Reset ke Default</span></button>';
   html += '<button class="btn btn-utama" onclick="submitFormGrupPengaturan(\'' + escapeHtml(grup) + '\')" id="tombol-simpan-pengaturan-' + escapeHtml(grup) + '" type="button">' + SVG_ICONS.check + '<span>Simpan</span></button>';
@@ -1465,9 +1576,6 @@ function renderFormGrupPengaturan(grup, items) {
   return html;
 }
 
-/**
- * Render halaman Pengaturan utama.
- */
 function renderHalamanPengaturan(wadah) {
   if (!pastikanLoginAdmin()) return;
 
@@ -1478,9 +1586,6 @@ function renderHalamanPengaturan(wadah) {
   muatPengaturanAdmin();
 }
 
-/**
- * Muat semua pengaturan (admin) lalu render tab + form.
- */
 function muatPengaturanAdmin() {
   var wrap = document.getElementById('pengaturan-content');
   if (!wrap) return;
@@ -1499,12 +1604,10 @@ function muatPengaturanAdmin() {
       return;
     }
 
-    // Tentukan grup aktif
     if (daftarGrup.indexOf(STATE.grupPengaturanAktif) === -1) {
       STATE.grupPengaturanAktif = daftarGrup[0];
     }
 
-    // Render tab
     var tabHtml = '<div class="pengaturan-tabs">';
     daftarGrup.forEach(function (g) {
       var aktif = g === STATE.grupPengaturanAktif ? ' aktif' : '';
@@ -1512,45 +1615,38 @@ function muatPengaturanAdmin() {
     });
     tabHtml += '</div>';
 
-    // Render form grup aktif
     var formHtml = '<div id="pengaturan-form-container">' + renderFormGrupPengaturan(STATE.grupPengaturanAktif, perGrup[STATE.grupPengaturanAktif]) + '</div>';
 
-    // Simpan data ke STATE untuk ganti tab nanti
     STATE.pengaturan = perGrup;
 
     wrap.innerHTML = tabHtml + formHtml;
-
-    // Pasang event sinkronisasi color picker <-> text
     pasangEventColorPicker();
   });
 }
 
-/**
- * Ganti tab pengaturan aktif.
- */
 function gantiTabPengaturan(grup) {
   if (!STATE.pengaturan || !STATE.pengaturan[grup]) return;
 
   STATE.grupPengaturanAktif = grup;
 
-  // Update tab aktif
   var tabs = document.querySelectorAll('.pengaturan-tab');
+  var tabAktifEl = null;
   for (var i = 0; i < tabs.length; i++) {
-    if (tabs[i].getAttribute('data-grup') === grup) tabs[i].classList.add('aktif');
+    if (tabs[i].getAttribute('data-grup') === grup) { tabs[i].classList.add('aktif'); tabAktifEl = tabs[i]; }
     else tabs[i].classList.remove('aktif');
   }
 
-  // Render form
+  // FIX P12: scroll tab aktif ke tengah (mobile)
+  if (tabAktifEl && tabAktifEl.scrollIntoView) {
+    try { tabAktifEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } catch (e) {}
+  }
+
   var container = document.getElementById('pengaturan-form-container');
   if (container) container.innerHTML = renderFormGrupPengaturan(grup, STATE.pengaturan[grup]);
 
-  // Re-pasang event color picker
   pasangEventColorPicker();
 }
 
-/**
- * Sinkronisasi color picker <-> text input untuk tipe color.
- */
 function pasangEventColorPicker() {
   var pickers = document.querySelectorAll('.pengaturan-color-picker');
   for (var i = 0; i < pickers.length; i++) {
@@ -1574,28 +1670,44 @@ function pasangEventColorPicker() {
 }
 
 /**
- * Submit form satu grup pengaturan.
+ * FIX P13: validasi ringan di frontend sebelum kirim.
  */
+function validasiNilaiPengaturanFrontend(kunci, nilai, tipe) {
+  var wajibDiisi = ['nama_pesantren', 'warna_utama', 'warna_sekunder', 'warna_aksen', 'tahun_ajaran_aktif', 'semester_aktif'];
+  if (wajibDiisi.indexOf(kunci) > -1 && !nilai) return 'Wajib diisi.';
+  if (!nilai) return '';
+  if (tipe === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nilai)) return 'Format email tidak valid.';
+  if (tipe === 'url' && !/^https?:\/\/.+/.test(nilai)) return 'URL harus diawali http:// atau https://';
+  if (tipe === 'color' && !/^#[0-9a-fA-F]{6}$/.test(nilai)) return 'Warna harus format hex (#rrggbb).';
+  if (tipe === 'number' && isNaN(Number(nilai))) return 'Harus berupa angka.';
+  return '';
+}
+
 function submitFormGrupPengaturan(grup) {
   var items = STATE.pengaturan && STATE.pengaturan[grup];
   if (!items) { tampilkanToast('Data grup tidak ditemukan.', 'gagal'); return; }
 
   var data = {};
+  var errorMsg = '';
   items.forEach(function (item) {
     var kunci = item.kunci;
     var tipe = item.tipe_input || 'text';
     var el = document.getElementById('pengaturan-' + kunci);
-
     if (!el) return;
-
-    // Untuk color, ambil dari text input (yang bisa diedit user)
     if (tipe === 'color') {
       var textEl = document.querySelector('[data-kunci-text="' + kunci + '"]');
       data[kunci] = textEl ? textEl.value : el.value;
     } else {
       data[kunci] = el.value;
     }
+    // Validasi frontend (P13)
+    if (!errorMsg) {
+      var v = validasiNilaiPengaturanFrontend(kunci, data[kunci], tipe);
+      if (v) errorMsg = '[' + kunci + '] ' + v;
+    }
   });
+
+  if (errorMsg) { tampilkanToast(errorMsg, 'gagal', 'Validasi Gagal'); return; }
 
   var tombol = document.getElementById('tombol-simpan-pengaturan-' + grup);
   if (tombol) { tombol.disabled = true; tombol.innerHTML = 'Menyimpan...'; }
@@ -1605,16 +1717,13 @@ function submitFormGrupPengaturan(grup) {
 
     if (res && res.sukses) {
       tampilkanToast((res.pesan) || 'Pengaturan berhasil disimpan.', 'sukses');
-      // Update STATE lokal
       items.forEach(function (item) {
         if (data.hasOwnProperty(item.kunci)) {
-          // Untuk password, jangan update nilai lokal (karena kosong)
           if (item.tipe_input !== 'password') {
             item.nilai = data[item.kunci];
           }
         }
       });
-      // Re-apply pengaturan ke UI (warna, nama, dll)
       if (grup === 'tampilan' || grup === 'identitas' || grup === 'akademik') {
         muatPengaturanPublik();
       }
@@ -1628,9 +1737,6 @@ function submitFormGrupPengaturan(grup) {
   });
 }
 
-/**
- * Konfirmasi reset grup ke default.
- */
 function aksiResetGrupPengaturan(grup) {
   var label = labelGrupPengaturanUI(grup);
   var html = '<p class="modal-konfirmasi-tanya">Reset grup <span class="modal-konfirmasi-nama">' + escapeHtml(label) + '</span> ke nilai default?</p><p class="teks-lembut" style="font-size:13px">Semua nilai di grup ini akan dikembalikan ke pengaturan awal. Tindakan ini tidak bisa dibatalkan.</p>';
@@ -1639,9 +1745,14 @@ function aksiResetGrupPengaturan(grup) {
 }
 
 /**
- * Proses reset grup.
+ * FIX P14: loading state + cegah klik ganda.
  */
 function prosesResetGrupPengaturan(grup) {
+  var footerEl = document.getElementById('modal-footer');
+  if (footerEl) {
+    var tombolReset = footerEl.querySelector('.btn-danger');
+    if (tombolReset) { tombolReset.disabled = true; tombolReset.textContent = 'Reset...'; }
+  }
   tutupModal();
   panggilApi('resetPengaturanGrup', { grup: grup }, 'POST').then(function (res) {
     if (res && res.sukses) {
@@ -1661,32 +1772,15 @@ function prosesResetGrupPengaturan(grup) {
  * ============================================================ */
 
 function labelKategoriPapanInfo(kode) {
-  var peta = {
-    'informasi':    'Informasi',
-    'akademik':     'Akademik',
-    'administrasi': 'Administrasi',
-    'prestasi':     'Prestasi',
-    'kegiatan':     'Kegiatan'
-  };
+  var peta = { 'informasi': 'Informasi', 'akademik': 'Akademik', 'administrasi': 'Administrasi', 'prestasi': 'Prestasi', 'kegiatan': 'Kegiatan' };
   return peta[kode] || kode || '';
 }
-
 function labelTargetPapanInfo(kode) {
-  var peta = {
-    'semua':  'Semua',
-    'santri': 'Santri',
-    'guru':   'Guru',
-    'wali':   'Wali'
-  };
+  var peta = { 'semua': 'Semua', 'santri': 'Santri', 'guru': 'Guru', 'wali': 'Wali' };
   return peta[kode] || kode || '';
 }
-
 function labelStatusPapanInfo(kode) {
-  var peta = {
-    'draft':  'Draft',
-    'terbit': 'Terbit',
-    'arsip':  'Arsip'
-  };
+  var peta = { 'draft': 'Draft', 'terbit': 'Terbit', 'arsip': 'Arsip' };
   return peta[kode] || kode || '';
 }
 
@@ -1695,13 +1789,11 @@ function renderBadgeKategoriPapanInfo(kategori) {
   if (!label) return '';
   return '<span class="papan-info-badge papan-info-badge-kategori papan-info-badge-' + escapeHtml(kategori) + '">' + escapeHtml(label) + '</span>';
 }
-
 function renderBadgeTargetPapanInfo(target) {
   var label = labelTargetPapanInfo(target);
   if (!label) return '';
   return '<span class="papan-info-badge papan-info-badge-target">' + escapeHtml(label) + '</span>';
 }
-
 function renderBadgeStatusPapanInfo(status) {
   var label = labelStatusPapanInfo(status);
   if (!label) return '';
@@ -1714,7 +1806,6 @@ function ambilLabelFilterPapanInfo(f) {
   if (f === 'arsip')   return 'Arsip';
   return 'Semua';
 }
-
 function setFilterPapanInfo(nilai) {
   STATE.filterPapanInfo = nilai;
   var lbl = document.getElementById('label-filter-papan-info');
@@ -1723,7 +1814,6 @@ function setFilterPapanInfo(nilai) {
   if (menu) menu.classList.remove('tampil');
   renderDaftarPapanInfoKeWadah();
 }
-
 function filterPapanInfo(daftar) {
   var hasil = daftar.slice();
   if (STATE.filterPapanInfo === 'terbit') hasil = hasil.filter(function (p) { return p.status === 'terbit'; });
@@ -1738,13 +1828,12 @@ function filterPapanInfo(daftar) {
   }
   return hasil;
 }
-
 function renderItemFilterPapanInfo(nilai, label) {
   var aktif = STATE.filterPapanInfo === nilai ? ' aktif' : '';
   return '<button class="dropdown-filter-item' + aktif + '" onclick="setFilterPapanInfo(\'' + nilai + '\')" type="button"><span>' + escapeHtml(label) + '</span>' + (STATE.filterPapanInfo === nilai ? SVG_ICONS.check : '') + '</button>';
 }
-
-function renderToolbarPapanInfo() {
+function renderToolbarPapanInfo(isReadOnly) {
+  var tombolTambah = isReadOnly ? '' : '<a class="btn btn-utama" href="#/admin/pengumuman/tambah">' + SVG_ICONS.plus + '<span>Tambah Papan Info</span></a>';
   return '<div class="santri-toolbar">' +
     '<div class="santri-search">' + SVG_ICONS.search + '<input id="papan-info-search-input" placeholder="Cari judul atau isi papan info..." type="text" value="' + escapeHtml(STATE.searchPapanInfo) + '"></div>' +
     '<div class="santri-toolbar-aksi">' +
@@ -1757,23 +1846,19 @@ function renderToolbarPapanInfo() {
           renderItemFilterPapanInfo('arsip', 'Arsip') +
         '</div>' +
       '</div>' +
-      '<a class="btn btn-utama" href="#/admin/pengumuman/tambah">' + SVG_ICONS.plus + '<span>Tambah Papan Info</span></a>' +
+      tombolTambah +
     '</div>' +
   '</div>';
 }
 
-function renderKartuPapanInfo(pgm) {
+function renderKartuPapanInfo(pgm, isReadOnly) {
   var judul = escapeHtml(pgm.judul || '(tanpa judul)');
   var isiRingkas = String(pgm.isi || '');
   if (isiRingkas.length > 160) isiRingkas = isiRingkas.substring(0, 160) + '...';
   isiRingkas = escapeHtml(isiRingkas);
-
   var tanggalTampil = pgm.tanggal_terbit ? formatTanggalIndo(pgm.tanggal_terbit) : (pgm.dibuat_pada ? formatTanggalIndo(pgm.dibuat_pada) : '');
-
   var lampiranHtml = '';
-  if (pgm.lampiran_url) {
-    lampiranHtml = '<span class="papan-info-lampiran" title="Ada lampiran">' + SVG_ICONS.file + '</span>';
-  }
+  if (pgm.lampiran_url) lampiranHtml = '<span class="papan-info-lampiran" title="Ada lampiran">' + SVG_ICONS.file + '</span>';
 
   var html = '<div class="papan-info-card papan-info-card-' + escapeHtml(pgm.status || 'draft') + '">';
   html += '<div class="papan-info-card-header">';
@@ -1787,34 +1872,34 @@ function renderKartuPapanInfo(pgm) {
   html += renderBadgeTargetPapanInfo(pgm.target);
   html += '</div>';
   html += '<div class="papan-info-card-aksi">';
-html += '<a class="santri-aksi-tombol" href="#/admin/pengumuman/lihat/' + escapeHtml(pgm.id) + '" title="Lihat">' + SVG_ICONS.eye + '</a>';
-html += '<button class="santri-aksi-tombol" onclick="aksiUbahStatusPapanInfo(\'' + escapeHtml(pgm.id) + '\',\'' + escapeHtml(pgm.status || 'draft') + '\')" title="Ubah Status" type="button">' + SVG_ICONS.refresh + '</button>';
-  html += '<a class="santri-aksi-tombol" href="#/admin/pengumuman/edit/' + escapeHtml(pgm.id) + '" title="Edit">' + SVG_ICONS.edit + '</a>';
-  html += '<button class="santri-aksi-tombol danger" onclick="konfirmasiHapusPapanInfo(\'' + escapeHtml(pgm.id) + '\',\'' + escapeHtml(pgm.judul || '') + '\')" title="Hapus" type="button">' + SVG_ICONS.trash + '</button>';
+  if (isReadOnly) {
+    html += '<a class="santri-aksi-tombol" href="#/admin/pengumuman/lihat/' + escapeHtml(pgm.id) + '" title="Lihat" style="display:none"></a>';
+  } else {
+    html += '<a class="santri-aksi-tombol" href="#/admin/pengumuman/lihat/' + escapeHtml(pgm.id) + '" title="Lihat">' + SVG_ICONS.eye + '</a>';
+    html += '<button class="santri-aksi-tombol" onclick="aksiUbahStatusPapanInfo(\'' + escapeHtml(pgm.id) + '\',\'' + escapeHtml(pgm.status || 'draft') + '\')" title="Ubah Status" type="button">' + SVG_ICONS.refresh + '</button>';
+    html += '<a class="santri-aksi-tombol" href="#/admin/pengumuman/edit/' + escapeHtml(pgm.id) + '" title="Edit">' + SVG_ICONS.edit + '</a>';
+    html += '<button class="santri-aksi-tombol danger" onclick="konfirmasiHapusPapanInfo(\'' + escapeHtml(pgm.id) + '\',\'' + escapeHtml(pgm.judul || '') + '\')" title="Hapus" type="button">' + SVG_ICONS.trash + '</button>';
+  }
   html += '</div>';
   html += '</div>';
   return html;
 }
 
-function renderDaftarPapanInfoKeWadah() {
+function renderDaftarPapanInfoKeWadah(isReadOnly) {
   var wrap = document.getElementById('papan-info-content');
   if (!wrap) return;
-
   if (!STATE.daftarPapanInfo || STATE.daftarPapanInfo.length === 0) {
-    wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.megaphone + '<h3>Belum ada papan info</h3><p>Mulai dengan menambahkan papan info pertama.</p><a class="btn btn-utama" href="#/admin/pengumuman/tambah">' + SVG_ICONS.plus + '<span>Tambah Papan Info</span></a></div>';
+    wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.megaphone + '<h3>Belum ada papan info</h3></div>';
     return;
   }
-
   var daftar = filterPapanInfo(STATE.daftarPapanInfo);
-
   if (daftar.length === 0) {
-    wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.search + '<h3>Tidak ada hasil</h3><p>Tidak ada papan info yang cocok dengan filter/pencarian.</p><button class="btn btn-outline" onclick="resetFilterPapanInfo()" type="button">Reset Filter</button></div>';
+    wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.search + '<h3>Tidak ada hasil</h3><p>Tidak ada papan info yang cocok.</p></div>';
     return;
   }
-
   var html = '<div class="santri-info-count">Menampilkan <strong>' + daftar.length + '</strong> dari <strong>' + STATE.daftarPapanInfo.length + '</strong> papan info</div>';
   html += '<div class="papan-info-grid">';
-  daftar.forEach(function (p) { html += renderKartuPapanInfo(p); });
+  daftar.forEach(function (p) { html += renderKartuPapanInfo(p, isReadOnly); });
   html += '</div>';
   wrap.innerHTML = html;
 }
@@ -1833,10 +1918,32 @@ function renderHalamanPapanInfo(wadah) {
   if (!pastikanLoginAdmin()) return;
   wadah.innerHTML = '' +
     buatHalamanHeader('Papan Info', 'Kelola papan informasi pesantren') +
-    renderToolbarPapanInfo() +
+    renderToolbarPapanInfo(false) +
     '<div id="papan-info-content"><div class="loading-box"><div class="spinner"></div><p class="teks-lembut">Memuat papan info...</p></div></div>';
   pasangEventToolbarPapanInfo();
-  muatPapanInfo();
+  muatPapanInfo(false);
+}
+
+/**
+ * FIX: Halaman Papan Info versi GURU/WALI (read-only).
+ * Tidak panggil pastikanLoginAdmin.
+ */
+function renderHalamanPapanInfoReadOnly(wadah) {
+  if (!pastikanLoginGuruWali()) return;
+  var role = ambilRoleSaatIni();
+  var routeKembali = role === 'guru' ? '#/guru' : '#/wali';
+  wadah.innerHTML = '' +
+    '<div class="admin-halaman-header">' +
+      '<div class="admin-halaman-judul-wrap">' +
+        '<a class="btn btn-ghost btn-sm" href="' + routeKembali + '" style="margin-bottom:8px">' + SVG_ICONS.arrowLeft + '<span>Kembali</span></a>' +
+        '<h1 class="admin-halaman-judul">Papan Info</h1>' +
+        '<p class="admin-halaman-deskripsi">Papan informasi pesantren (mode lihat saja)</p>' +
+      '</div>' +
+    '</div>' +
+    renderToolbarPapanInfo(true) +
+    '<div id="papan-info-content"><div class="loading-box"><div class="spinner"></div><p class="teks-lembut">Memuat papan info...</p></div></div>';
+  pasangEventToolbarPapanInfo();
+  muatPapanInfo(true);
 }
 
 function pasangEventToolbarPapanInfo() {
@@ -1851,11 +1958,11 @@ function pasangEventToolbarPapanInfo() {
   }
 }
 
-function muatPapanInfo() {
+function muatPapanInfo(isReadOnly) {
   panggilApi('ambilSemuaPengumuman', {}, 'POST').then(function (res) {
     if (res && res.sukses && res.data && Array.isArray(res.data)) {
       STATE.daftarPapanInfo = res.data;
-      renderDaftarPapanInfoKeWadah();
+      renderDaftarPapanInfoKeWadah(isReadOnly);
     } else {
       var wrap = document.getElementById('papan-info-content');
       if (wrap) wrap.innerHTML = '<div class="santri-kosong">' + SVG_ICONS.warning + '<h3>Gagal memuat data</h3><p>' + escapeHtml((res && res.pesan) || 'Terjadi kesalahan.') + '</p><button class="btn btn-outline" onclick="muatPapanInfo()" type="button">' + SVG_ICONS.refresh + '<span>Coba Lagi</span></button></div>';
@@ -1880,52 +1987,38 @@ function muatPapanInfoDashboard() {
     }
     var html = '';
     res.data.forEach(function (p) {
-  var tgl = p.tanggal_terbit ? formatTanggalIndo(p.tanggal_terbit) : (p.dibuat_pada ? formatTanggalIndo(p.dibuat_pada) : '');
-  var isiRingkas = String(p.isi || '');
-  if (isiRingkas.length > 100) isiRingkas = isiRingkas.substring(0, 100) + '...';
-  html += '<a class="pengumuman-item" href="#/admin/pengumuman/lihat/' + escapeHtml(p.id) + '">';
-  html += '<div class="pengumuman-item-header"><span class="pengumuman-item-kategori">' + escapeHtml(labelKategoriPapanInfo(p.kategori)) + '</span><span class="pengumuman-item-tanggal">' + escapeHtml(tgl) + '</span></div>';
-  html += '<div class="pengumuman-item-judul">' + escapeHtml(p.judul || '') + '</div>';
-  html += '<div class="pengumuman-item-isi">' + escapeHtml(isiRingkas) + '</div>';
-  html += '<div class="pengumuman-item-selengkapnya">Lihat selengkapnya &rarr;</div>';
-  html += '</a>';
-});
+      var tgl = p.tanggal_terbit ? formatTanggalIndo(p.tanggal_terbit) : (p.dibuat_pada ? formatTanggalIndo(p.dibuat_pada) : '');
+      var isiRingkas = String(p.isi || '');
+      if (isiRingkas.length > 100) isiRingkas = isiRingkas.substring(0, 100) + '...';
+      html += '<a class="pengumuman-item" href="#/admin/pengumuman/lihat/' + escapeHtml(p.id) + '">';
+      html += '<div class="pengumuman-item-header"><span class="pengumuman-item-kategori">' + escapeHtml(labelKategoriPapanInfo(p.kategori)) + '</span><span class="pengumuman-item-tanggal">' + escapeHtml(tgl) + '</span></div>';
+      html += '<div class="pengumuman-item-judul">' + escapeHtml(p.judul || '') + '</div>';
+      html += '<div class="pengumuman-item-isi">' + escapeHtml(isiRingkas) + '</div>';
+      html += '<div class="pengumuman-item-selengkapnya">Lihat selengkapnya &rarr;</div>';
+      html += '</a>';
+    });
     wadah.innerHTML = html;
   });
 }
 
 /* ============================================================
- * PAPAN INFO - FORM TAMBAH/EDIT
+ * PAPAN INFO - FORM & DETAIL
  * ============================================================ */
 
 function papanInfoFieldKategori(nilai, wajib) {
-  var opsi = [
-    { v: 'informasi',    t: 'Informasi' },
-    { v: 'akademik',     t: 'Akademik' },
-    { v: 'administrasi', t: 'Administrasi' },
-    { v: 'prestasi',     t: 'Prestasi' },
-    { v: 'kegiatan',     t: 'Kegiatan' }
-  ];
-  return selectField('Kategori', 'papan-info-kategori', nilai || 'informasi', wajib, opsi);
+  return selectField('Kategori', 'papan-info-kategori', nilai || 'informasi', wajib, [
+    { v: 'informasi', t: 'Informasi' }, { v: 'akademik', t: 'Akademik' }, { v: 'administrasi', t: 'Administrasi' }, { v: 'prestasi', t: 'Prestasi' }, { v: 'kegiatan', t: 'Kegiatan' }
+  ]);
 }
-
 function papanInfoFieldTarget(nilai, wajib) {
-  var opsi = [
-    { v: 'semua',  t: 'Semua' },
-    { v: 'santri', t: 'Santri' },
-    { v: 'guru',   t: 'Guru' },
-    { v: 'wali',   t: 'Wali' }
-  ];
-  return selectField('Target', 'papan-info-target', nilai || 'semua', wajib, opsi);
+  return selectField('Target', 'papan-info-target', nilai || 'semua', wajib, [
+    { v: 'semua', t: 'Semua' }, { v: 'santri', t: 'Santri' }, { v: 'guru', t: 'Guru' }, { v: 'wali', t: 'Wali' }
+  ]);
 }
-
 function papanInfoFieldStatus(nilai, wajib) {
-  var opsi = [
-    { v: 'draft',  t: 'Draft (belum terbit)' },
-    { v: 'terbit', t: 'Terbit (tampil di papan info)' },
-    { v: 'arsip',  t: 'Arsip (disembunyikan)' }
-  ];
-  return selectField('Status', 'papan-info-status', nilai || 'draft', wajib, opsi);
+  return selectField('Status', 'papan-info-status', nilai || 'draft', wajib, [
+    { v: 'draft', t: 'Draft (belum terbit)' }, { v: 'terbit', t: 'Terbit (tampil di papan info)' }, { v: 'arsip', t: 'Arsip (disembunyikan)' }
+  ]);
 }
 
 function renderFormPapanInfo(wadah, dataEdit) {
@@ -1933,52 +2026,24 @@ function renderFormPapanInfo(wadah, dataEdit) {
   var adalahEdit = !!dataEdit;
   var judul = adalahEdit ? 'Edit Papan Info' : 'Tambah Papan Info';
   var deskripsi = adalahEdit ? 'Perbarui papan info: ' + (p.judul || '') : 'Lengkapi data papan info baru';
-
   var html = '' +
-    '<div class="admin-halaman-header">' +
-      '<div class="admin-halaman-judul-wrap">' +
-        '<a class="btn btn-ghost btn-sm" href="#/admin/pengumuman" style="margin-bottom:8px">' + SVG_ICONS.arrowLeft + '<span>Kembali</span></a>' +
-        '<h1 class="admin-halaman-judul">' + escapeHtml(judul) + '</h1>' +
-        '<p class="admin-halaman-deskripsi">' + escapeHtml(deskripsi) + '</p>' +
-      '</div>' +
-    '</div>' +
+    '<div class="admin-halaman-header"><div class="admin-halaman-judul-wrap"><a class="btn btn-ghost btn-sm" href="#/admin/pengumuman" style="margin-bottom:8px">' + SVG_ICONS.arrowLeft + '<span>Kembali</span></a><h1 class="admin-halaman-judul">' + escapeHtml(judul) + '</h1><p class="admin-halaman-deskripsi">' + escapeHtml(deskripsi) + '</p></div></div>' +
     '<form id="form-papan-info" onsubmit="submitFormPapanInfo(event)">' +
       '<input id="papan-info-id" type="hidden" value="' + escapeHtml(p.id || '') + '">' +
       '<div class="form-card">' +
         '<div class="form-card-judul">' + SVG_ICONS.megaphone + '<span>Konten Papan Info</span></div>' +
         '<div class="form-grid form-grid-2">' +
-          '<div class="form-grup" style="grid-column:1/-1">' +
-            '<label class="form-label" for="papan-info-judul">Judul<span class="form-label-wajib-tanda">*</span></label>' +
-            '<input class="form-input" id="papan-info-judul" maxlength="150" placeholder="Judul papan info" type="text" value="' + escapeHtml(p.judul || '') + '" style="padding-left:14px">' +
-          '</div>' +
+          '<div class="form-grup" style="grid-column:1/-1"><label class="form-label" for="papan-info-judul">Judul<span class="form-label-wajib-tanda">*</span></label><input class="form-input" id="papan-info-judul" maxlength="150" placeholder="Judul papan info" type="text" value="' + escapeHtml(p.judul || '') + '" style="padding-left:14px"></div>' +
         '</div>' +
-        '<div class="form-grid form-grid-2" style="margin-top:16px">' +
-          papanInfoFieldKategori(p.kategori, true) +
-          papanInfoFieldTarget(p.target, true) +
-        '</div>' +
-        '<div style="margin-top:16px">' +
-          '<div class="form-grup">' +
-            '<label class="form-label" for="papan-info-isi">Isi Papan Info<span class="form-label-wajib-tanda">*</span></label>' +
-            '<textarea class="form-textarea" id="papan-info-isi" maxlength="5000" placeholder="Tulis isi papan info di sini..." style="min-height:180px">' + escapeHtml(p.isi || '') + '</textarea>' +
-            '<div class="form-hint">Maksimal 5000 karakter.</div>' +
-          '</div>' +
-        '</div>' +
+        '<div class="form-grid form-grid-2" style="margin-top:16px">' + papanInfoFieldKategori(p.kategori, true) + papanInfoFieldTarget(p.target, true) + '</div>' +
+        '<div style="margin-top:16px"><div class="form-grup"><label class="form-label" for="papan-info-isi">Isi Papan Info<span class="form-label-wajib-tanda">*</span></label><textarea class="form-textarea" id="papan-info-isi" maxlength="5000" placeholder="Tulis isi papan info di sini..." style="min-height:180px">' + escapeHtml(p.isi || '') + '</textarea><div class="form-hint">Maksimal 5000 karakter.</div></div></div>' +
       '</div>' +
       '<div class="form-card">' +
         '<div class="form-card-judul">' + SVG_ICONS.settings + '<span>Pengaturan</span></div>' +
-        '<div class="form-grid form-grid-2">' +
-          papanInfoFieldStatus(p.status, true) +
-          field('Tanggal Kadaluarsa', 'papan-info-tanggal-kadaluarsa', p.tanggal_kadaluarsa, false, 'date', 'Opsional') +
-        '</div>' +
-        '<div style="margin-top:16px">' +
-          field('URL Lampiran', 'papan-info-lampiran-url', p.lampiran_url, false, 'url', 'https://... (opsional)') +
-          '<div class="form-hint">Tempel link Drive atau URL eksternal untuk lampiran (opsional).</div>' +
-        '</div>' +
+        '<div class="form-grid form-grid-2">' + papanInfoFieldStatus(p.status, true) + field('Tanggal Kadaluarsa', 'papan-info-tanggal-kadaluarsa', p.tanggal_kadaluarsa, false, 'date', 'Opsional') + '</div>' +
+        '<div style="margin-top:16px">' + field('URL Lampiran', 'papan-info-lampiran-url', p.lampiran_url, false, 'url', 'https://... (opsional)') + '<div class="form-hint">Tempel link Drive atau URL eksternal untuk lampiran (opsional).</div></div>' +
       '</div>' +
-      '<div class="form-tombol" style="display:flex;gap:12px;justify-content:flex-end;margin-bottom:32px">' +
-        '<a class="btn btn-ghost" href="#/admin/pengumuman">Batal</a>' +
-        '<button class="btn btn-utama" id="tombol-simpan-papan-info" type="submit">' + (adalahEdit ? 'Simpan Perubahan' : 'Simpan Papan Info') + '</button>' +
-      '</div>' +
+      '<div class="form-tombol" style="display:flex;gap:12px;justify-content:flex-end;margin-bottom:32px"><a class="btn btn-ghost" href="#/admin/pengumuman">Batal</a><button class="btn btn-utama" id="tombol-simpan-papan-info" type="submit">' + (adalahEdit ? 'Simpan Perubahan' : 'Simpan Papan Info') + '</button></div>' +
     '</form>';
   wadah.innerHTML = html;
 }
@@ -1987,53 +2052,38 @@ function renderHalamanTambahPapanInfo(wadah) {
   if (!pastikanLoginAdmin()) return;
   renderFormPapanInfo(wadah, null);
 }
-
 function renderHalamanEditPapanInfo(wadah, id) {
   if (!pastikanLoginAdmin()) return;
   wadah.innerHTML = '<div class="loading-box"><div class="spinner"></div><p class="teks-lembut">Memuat papan info...</p></div>';
   panggilApi('ambilPengumumanBerdasarkanId', { id: id }, 'POST').then(function (res) {
     if (res && res.sukses && res.data) renderFormPapanInfo(wadah, res.data);
-    else {
-      wadah.innerHTML = '<div class="admin-placeholder"><div class="admin-placeholder-ikon">' + SVG_ICONS.warning + '</div><h2>Data tidak ditemukan</h2><p>Papan info dengan ID tersebut tidak ada.</p><a class="btn btn-utama mt-4" href="#/admin/pengumuman">Kembali ke Papan Info</a></div>';
-    }
+    else wadah.innerHTML = '<div class="admin-placeholder"><div class="admin-placeholder-ikon">' + SVG_ICONS.warning + '</div><h2>Data tidak ditemukan</h2></div>';
   });
 }
-
 function renderHalamanDetailPapanInfo(wadah, id) {
   if (!pastikanLoginAdmin()) return;
   wadah.innerHTML = '<div class="loading-box"><div class="spinner"></div><p class="teks-lembut">Memuat papan info...</p></div>';
   panggilApi('ambilPengumumanBerdasarkanId', { id: id }, 'POST').then(function (res) {
     if (!res || !res.sukses || !res.data) {
-      wadah.innerHTML = '<div class="admin-placeholder"><div class="admin-placeholder-ikon">' + SVG_ICONS.warning + '</div><h2>Data tidak ditemukan</h2><p>' + escapeHtml((res && res.pesan) || 'Papan info tidak ditemukan.') + '</p><a class="btn btn-utama mt-4" href="#/admin/pengumuman">Kembali ke Papan Info</a></div>';
+      wadah.innerHTML = '<div class="admin-placeholder"><div class="admin-placeholder-ikon">' + SVG_ICONS.warning + '</div><h2>Data tidak ditemukan</h2><p>' + escapeHtml((res && res.pesan) || '') + '</p><a class="btn btn-utama mt-4" href="#/admin/pengumuman">Kembali</a></div>';
       return;
     }
     wadah.innerHTML = renderDetailPapanInfoLengkap(res.data);
   });
 }
-
 function renderDetailPapanInfoLengkap(p) {
   var tgl = p.tanggal_terbit ? formatTanggalIndo(p.tanggal_terbit) : (p.dibuat_pada ? formatTanggalIndo(p.dibuat_pada) : '-');
   var tglKadaluarsa = p.tanggal_kadaluarsa ? formatTanggalIndo(p.tanggal_kadaluarsa) : '';
   var isiHtml = escapeHtml(p.isi || '').replace(/\n/g, '<br>');
   var lampiranHtml = '';
-  if (p.lampiran_url) {
-    lampiranHtml = '<div class="papan-info-detail-lampiran"><a class="btn btn-outline btn-sm" href="' + escapeHtml(p.lampiran_url) + '" rel="noopener" target="_blank">' + SVG_ICONS.file + '<span>Buka Lampiran</span></a></div>';
-  }
-
-  var html = '' +
-    '<div class="admin-halaman-header">' +
-      '<div class="admin-halaman-judul-wrap">' +
-        '<a class="btn btn-ghost btn-sm" href="#/admin/pengumuman" style="margin-bottom:8px">' + SVG_ICONS.arrowLeft + '<span>Kembali ke Papan Info</span></a>' +
-      '</div>' +
-    '</div>' +
+  if (p.lampiran_url) lampiranHtml = '<div class="papan-info-detail-lampiran"><a class="btn btn-outline btn-sm" href="' + escapeHtml(p.lampiran_url) + '" rel="noopener" target="_blank">' + SVG_ICONS.file + '<span>Buka Lampiran</span></a></div>';
+  return '' +
+    '<div class="admin-halaman-header"><div class="admin-halaman-judul-wrap"><a class="btn btn-ghost btn-sm" href="#/admin/pengumuman" style="margin-bottom:8px">' + SVG_ICONS.arrowLeft + '<span>Kembali ke Papan Info</span></a></div></div>' +
     '<div class="papan-info-detail">' +
       '<div class="papan-info-detail-header">' +
         '<div class="papan-info-badges">' + renderBadgeKategoriPapanInfo(p.kategori) + renderBadgeStatusPapanInfo(p.status) + renderBadgeTargetPapanInfo(p.target) + '</div>' +
         '<h1 class="papan-info-detail-judul">' + escapeHtml(p.judul || '(tanpa judul)') + '</h1>' +
-        '<div class="papan-info-detail-meta">' +
-          '<span>' + SVG_ICONS.calendar + '<span>Terbit: ' + escapeHtml(tgl) + '</span></span>' +
-          (tglKadaluarsa ? '<span>' + SVG_ICONS.calendar + '<span>Kadaluarsa: ' + escapeHtml(tglKadaluarsa) + '</span></span>' : '') +
-        '</div>' +
+        '<div class="papan-info-detail-meta"><span>' + SVG_ICONS.calendar + '<span>Terbit: ' + escapeHtml(tgl) + '</span></span>' + (tglKadaluarsa ? '<span>' + SVG_ICONS.calendar + '<span>Kadaluarsa: ' + escapeHtml(tglKadaluarsa) + '</span></span>' : '') + '</div>' +
       '</div>' +
       '<div class="papan-info-detail-isi">' + isiHtml + '</div>' +
       lampiranHtml +
@@ -2044,94 +2094,55 @@ function renderDetailPapanInfoLengkap(p) {
         '<button class="btn btn-danger" onclick="konfirmasiHapusPapanInfo(\'' + escapeHtml(p.id) + '\',\'' + escapeHtml(p.judul || '') + '\')" type="button">' + SVG_ICONS.trash + '<span>Hapus</span></button>' +
       '</div>' +
     '</div>';
-  return html;
 }
-
 function submitFormPapanInfo(e) {
   if (e) e.preventDefault();
   var idEdit = document.getElementById('papan-info-id').value;
   var adalahEdit = !!idEdit;
   var tombol = document.getElementById('tombol-simpan-papan-info');
-
-  var data = {
-    judul: ambilNilai('papan-info-judul'),
-    isi: ambilNilai('papan-info-isi'),
-    kategori: ambilNilai('papan-info-kategori'),
-    target: ambilNilai('papan-info-target'),
-    status: ambilNilai('papan-info-status'),
-    lampiran_url: ambilNilai('papan-info-lampiran-url'),
-    tanggal_kadaluarsa: ambilNilai('papan-info-tanggal-kadaluarsa')
-  };
-
+  var data = { judul: ambilNilai('papan-info-judul'), isi: ambilNilai('papan-info-isi'), kategori: ambilNilai('papan-info-kategori'), target: ambilNilai('papan-info-target'), status: ambilNilai('papan-info-status'), lampiran_url: ambilNilai('papan-info-lampiran-url'), tanggal_kadaluarsa: ambilNilai('papan-info-tanggal-kadaluarsa') };
   if (!data.judul) { tampilkanToast('Judul wajib diisi.', 'gagal'); return; }
   if (!data.isi)   { tampilkanToast('Isi papan info wajib diisi.', 'gagal'); return; }
-  if (!data.kategori) { tampilkanToast('Kategori wajib diisi.', 'gagal'); return; }
-  if (!data.target)   { tampilkanToast('Target wajib diisi.', 'gagal'); return; }
-
   if (tombol) { tombol.disabled = true; tombol.innerHTML = 'Menyimpan...'; }
-
   var aksi = adalahEdit ? 'perbaruiPengumuman' : 'tambahPengumuman';
   var muatan = adalahEdit ? { id: idEdit, data: data } : { data: data };
-
   panggilApi(aksi, muatan, 'POST').then(function (res) {
     if (tombol) { tombol.disabled = false; tombol.innerHTML = adalahEdit ? 'Simpan Perubahan' : 'Simpan Papan Info'; }
-    if (res && res.sukses) {
-      tampilkanToast(adalahEdit ? 'Papan info berhasil diperbarui.' : 'Papan info baru berhasil ditambahkan.', 'sukses');
-      window.location.hash = '#/admin/pengumuman';
-    } else {
-      tampilkanToast((res && res.pesan) || 'Gagal menyimpan papan info.', 'gagal');
-    }
+    if (res && res.sukses) { tampilkanToast(adalahEdit ? 'Papan info berhasil diperbarui.' : 'Papan info baru berhasil ditambahkan.', 'sukses'); window.location.hash = '#/admin/pengumuman'; }
+    else tampilkanToast((res && res.pesan) || 'Gagal menyimpan papan info.', 'gagal');
   }).catch(function (err) {
     if (tombol) { tombol.disabled = false; tombol.innerHTML = adalahEdit ? 'Simpan Perubahan' : 'Simpan Papan Info'; }
     logDebug('Gagal simpan papan info:', err);
     tampilkanToast('Terjadi kesalahan saat menyimpan.', 'gagal');
   });
 }
-
 function konfirmasiHapusPapanInfo(id, judul) {
-  var html = '<p class="modal-konfirmasi-tanya">Yakin ingin menghapus papan info <span class="modal-konfirmasi-nama">' + escapeHtml(judul) + '</span>?</p><p class="teks-lembut" style="font-size:13px">Papan info akan <strong>dihapus permanen</strong> dari database. Tindakan ini tidak bisa dibatalkan.</p>';
+  var html = '<p class="modal-konfirmasi-tanya">Yakin ingin menghapus papan info <span class="modal-konfirmasi-nama">' + escapeHtml(judul) + '</span>?</p><p class="teks-lembut" style="font-size:13px">Papan info akan <strong>dihapus permanen</strong>.</p>';
   var footer = '<button class="btn btn-ghost" onclick="tutupModal()" type="button">Batal</button><button class="btn btn-danger" onclick="hapusPapanInfoProses(\'' + escapeHtml(id) + '\')" type="button">Hapus</button>';
   bukaModal('Konfirmasi Hapus', html, footer);
 }
-
 function hapusPapanInfoProses(id) {
   tutupModal();
   panggilApi('hapusPengumuman', { id: id }, 'POST').then(function (res) {
-    if (res && res.sukses) {
-      tampilkanToast('Papan info berhasil dihapus.', 'sukses');
-      muatPapanInfo();
-    } else {
-      tampilkanToast((res && res.pesan) || 'Gagal menghapus.', 'gagal');
-    }
+    if (res && res.sukses) { tampilkanToast('Papan info berhasil dihapus.', 'sukses'); muatPapanInfo(); }
+    else tampilkanToast((res && res.pesan) || 'Gagal menghapus.', 'gagal');
   });
 }
-
 function aksiUbahStatusPapanInfo(id, statusSekarang) {
   var urutan = ['draft', 'terbit', 'arsip'];
   var idx = urutan.indexOf(statusSekarang);
   if (idx === -1) idx = 0;
   var statusBaru = urutan[(idx + 1) % urutan.length];
-
   var label = labelStatusPapanInfo(statusBaru);
-  var html = '<p class="modal-konfirmasi-tanya">Ubah status papan info menjadi <span class="modal-konfirmasi-nama">' + escapeHtml(label) + '</span>?</p>' +
-    '<p class="teks-lembut" style="font-size:13px">' +
-    (statusBaru === 'terbit' ? 'Papan info akan <strong>tampil</strong> di papan info publik.' : '') +
-    (statusBaru === 'draft' ? 'Papan info akan <strong>disembunyikan</strong> dari publik (draft).' : '') +
-    (statusBaru === 'arsip' ? 'Papan info akan <strong>diarsipkan</strong>, data tetap tersimpan.' : '') +
-    '</p>';
+  var html = '<p class="modal-konfirmasi-tanya">Ubah status papan info menjadi <span class="modal-konfirmasi-nama">' + escapeHtml(label) + '</span>?</p>';
   var footer = '<button class="btn btn-ghost" onclick="tutupModal()" type="button">Batal</button><button class="btn btn-utama" onclick="prosesUbahStatusPapanInfo(\'' + escapeHtml(id) + '\',\'' + escapeHtml(statusBaru) + '\')" type="button">Ubah</button>';
   bukaModal('Ubah Status Papan Info', html, footer);
 }
-
 function prosesUbahStatusPapanInfo(id, status) {
   tutupModal();
   panggilApi('ubahStatusPengumuman', { id: id, status: status }, 'POST').then(function (res) {
-    if (res && res.sukses) {
-      tampilkanToast('Status papan info berhasil diubah ke ' + labelStatusPapanInfo(status) + '.', 'sukses');
-      muatPapanInfo();
-    } else {
-      tampilkanToast((res && res.pesan) || 'Gagal mengubah status.', 'gagal');
-    }
+    if (res && res.sukses) { tampilkanToast('Status berhasil diubah ke ' + labelStatusPapanInfo(status) + '.', 'sukses'); muatPapanInfo(); }
+    else tampilkanToast((res && res.pesan) || 'Gagal mengubah status.', 'gagal');
   });
 }
 
@@ -2185,10 +2196,9 @@ function prosesLogin(e) {
     if (!dataLogin.token || !dataLogin.pengguna) { tampilkanErrorLogin('Respons server tidak lengkap.'); return; }
     simpanSesi(dataLogin.token, dataLogin.pengguna);
     tampilkanToast('Selamat datang, ' + (dataLogin.pengguna.nama_lengkap || dataLogin.pengguna.email), 'sukses', 'Login Berhasil');
-    // Redirect sesuai role
     var roleUser = dataLogin.pengguna.role || 'admin';
     var routeTujuan = ROUTE_DASHBOARD_BY_ROLE[roleUser] || '#/admin';
-    window.location.hash = routeTujuan;  
+    window.location.hash = routeTujuan;
   }).catch(function (err) { aturLoadingTombol(false); logDebug('Error login:', err); tampilkanErrorLogin('Tidak dapat terhubung ke server.'); });
 }
 function renderDropdownTahunAjaran() {
@@ -2209,6 +2219,7 @@ function renderModalTambah() {
   var html = '<div class="modal-grid">' + opsi.map(function (o) { return '<a class="modal-opsi" href="' + o.route + '" onclick="tutupModal()"><div class="modal-opsi-icon">' + (SVG_ICONS[o.icon] || SVG_ICONS.infoCircle) + '</div><div class="modal-opsi-label">' + escapeHtml(o.label) + '</div></a>'; }).join('') + '</div>';
   bukaModal('Pilih yang Akan Ditambahkan', html);
 }
+
 function renderDashboardAdmin(wadah) {
   var pengguna = STATE.pengguna || {};
   var namaLengkap = pengguna.nama_lengkap || pengguna.email || 'User';
@@ -2238,7 +2249,58 @@ function renderDashboardAdmin(wadah) {
   });
   muatPapanInfoDashboard();
 }
+
+function renderDashboardGuru(wadah) {
+  if (!STATE.token || !STATE.pengguna) { window.location.hash = '#/login'; return; }
+  if (STATE.pengguna.role !== 'guru') { window.location.hash = ROUTE_DASHBOARD_BY_ROLE[STATE.pengguna.role] || '#/'; return; }
+  var namaLengkap = STATE.pengguna.nama_lengkap || STATE.pengguna.email || 'Ustadz';
+  var salam = ambilSalamWaktu();
+  var tanggal = ambilTanggalHariIni();
+  wadah.innerHTML = '' +
+    '<div class="admin-halaman-header"><div class="admin-halaman-judul-wrap"><h1 class="admin-halaman-judul">Dashboard Guru</h1><p class="admin-halaman-deskripsi">Selamat datang di portal guru ELKAROM</p></div></div>' +
+    '<div class="dash-salam" style="background:linear-gradient(135deg,var(--warna-utama) 0%,var(--warna-utama-tua) 100%);color:white;border-radius:16px;padding:32px;margin-bottom:24px;position:relative;overflow:hidden"><div style="position:relative;z-index:1"><h1 style="font-size:24px;font-weight:800;color:white;margin-bottom:8px">' + escapeHtml(salam) + ', <span style="color:var(--warna-aksen)">' + escapeHtml(namaLengkap) + '</span></h1><div style="font-size:14.5px;color:rgba(255,255,255,0.9);display:inline-flex;align-items:center;gap:8px">' + SVG_ICONS.calendar + '<span>' + escapeHtml(tanggal) + '</span></div><div style="margin-top:12px;font-size:13.5px;color:rgba(255,255,255,0.85)">' + SVG_ICONS.graduation + ' <span>Anda login sebagai <strong>Guru</strong></span></div></div></div>' +
+    renderPapanInfoDashboard() +
+    '<div style="margin-bottom:24px"><div style="margin-bottom:16px"><h3 style="font-size:17px;font-weight:700">Aksi Cepat</h3></div><div class="aksi-cepat-grid">' +
+      '<a class="aksi-cepat-item" href="#/guru/santri"><div class="aksi-cepat-icon">' + SVG_ICONS.users + '</div><span>Data Santri</span></a>' +
+      '<a class="aksi-cepat-item" href="#/guru/absensi"><div class="aksi-cepat-icon">' + SVG_ICONS.clipboard + '</div><span>Absensi</span></a>' +
+      '<a class="aksi-cepat-item" href="#/guru/nilai"><div class="aksi-cepat-icon">' + SVG_ICONS.trendingUp + '</div><span>Nilai</span></a>' +
+      '<a class="aksi-cepat-item" href="#/guru/jadwal"><div class="aksi-cepat-icon">' + SVG_ICONS.calendar + '</div><span>Jadwal</span></a>' +
+    '</div></div>' +
+    '<div style="margin-bottom:24px"><div style="margin-bottom:16px"><h3 style="font-size:17px;font-weight:700">Statistik Santri</h3></div><div class="stat-grid" id="guru-stat-grid">' +
+      '<div class="stat-card"><div class="stat-label">Total Santri</div><div class="stat-nilai" id="guru-stat-total"><span class="stat-loading"></span></div></div>' +
+      '<div class="stat-card stat-card-aksen"><div class="stat-label">Santri Aktif</div><div class="stat-nilai" id="guru-stat-aktif"><span class="stat-loading"></span></div></div>' +
+      '<div class="stat-card stat-card-abu"><div class="stat-label">Santri Putra</div><div class="stat-nilai" id="guru-stat-putra"><span class="stat-loading"></span></div></div>' +
+      '<div class="stat-card stat-card-merah"><div class="stat-label">Santri Putri</div><div class="stat-nilai" id="guru-stat-putri"><span class="stat-loading"></span></div></div>' +
+    '</div></div>';
+  muatPapanInfoDashboard();
+  panggilApi('statistikSiswa', {}, 'POST').then(function (respon) {
+    if (!respon || !respon.sukses || !respon.data) { ['guru-stat-total','guru-stat-aktif','guru-stat-putra','guru-stat-putri'].forEach(function (id) { var el = document.getElementById(id); if (el) el.textContent = '-'; }); return; }
+    var d = respon.data;
+    var map = { 'guru-stat-total': d.total || 0, 'guru-stat-aktif': d.aktif || 0, 'guru-stat-putra': d.putra || 0, 'guru-stat-putri': d.putri || 0 };
+    for (var k in map) { if (map.hasOwnProperty(k)) { var el = document.getElementById(k); if (el) el.textContent = map[k]; } }
+  });
+}
+
+function renderDashboardWali(wadah) {
+  if (!STATE.token || !STATE.pengguna) { window.location.hash = '#/login'; return; }
+  if (STATE.pengguna.role !== 'wali') { window.location.hash = ROUTE_DASHBOARD_BY_ROLE[STATE.pengguna.role] || '#/'; return; }
+  var namaLengkap = STATE.pengguna.nama_lengkap || STATE.pengguna.email || 'Bapak/Ibu';
+  var salam = ambilSalamWaktu();
+  var tanggal = ambilTanggalHariIni();
+  wadah.innerHTML = '' +
+    '<div class="admin-halaman-header"><div class="admin-halaman-judul-wrap"><h1 class="admin-halaman-judul">Dashboard Wali</h1><p class="admin-halaman-deskripsi">Selamat datang di portal wali santri ELKAROM</p></div></div>' +
+    '<div class="dash-salam" style="background:linear-gradient(135deg,var(--warna-utama) 0%,var(--warna-utama-tua) 100%);color:white;border-radius:16px;padding:32px;margin-bottom:24px;position:relative;overflow:hidden"><div style="position:relative;z-index:1"><h1 style="font-size:24px;font-weight:800;color:white;margin-bottom:8px">' + escapeHtml(salam) + ', <span style="color:var(--warna-aksen)">' + escapeHtml(namaLengkap) + '</span></h1><div style="font-size:14.5px;color:rgba(255,255,255,0.9);display:inline-flex;align-items:center;gap:8px">' + SVG_ICONS.calendar + '<span>' + escapeHtml(tanggal) + '</span></div><div style="margin-top:12px;font-size:13.5px;color:rgba(255,255,255,0.85)">' + SVG_ICONS.users + ' <span>Anda login sebagai <strong>Wali Santri</strong></span></div></div></div>' +
+    renderPapanInfoDashboard() +
+    '<div class="form-card"><div class="form-card-judul">' + SVG_ICONS.users + '<span>Info Anak</span></div><p class="teks-lembut" style="font-size:13.5px;line-height:1.7;margin:0">Fitur informasi detail santri (absensi, nilai, raport) akan tersedia setelah modul Data Wali dan Akademik dibangun. Untuk saat ini, Anda bisa melihat papan informasi terbaru dari pesantren di atas.</p></div>';
+  muatPapanInfoDashboard();
+}
+
 function renderHalamanAdminPlaceholder(wadah, judul, deskripsi) { wadah.innerHTML = '<div class="admin-halaman-header"><div class="admin-halaman-judul-wrap"><h1 class="admin-halaman-judul">' + escapeHtml(judul) + '</h1><p class="admin-halaman-deskripsi">' + escapeHtml(deskripsi || 'Modul ini sedang dalam pengembangan.') + '</p></div></div><div class="admin-placeholder"><div class="admin-placeholder-ikon">' + SVG_ICONS.info + '</div><h2>' + escapeHtml(judul) + '</h2><p>Halaman ini sedang dalam pengembangan dan akan segera tersedia.</p><div class="admin-placeholder-badge">SEGERA HADIR</div></div>'; }
+function renderPlaceholderGuruWali(wadah, judul) {
+  var role = ambilRoleSaatIni();
+  var routeKembali = role === 'guru' ? '#/guru' : '#/wali';
+  wadah.innerHTML = '<div class="admin-halaman-header"><div class="admin-halaman-judul-wrap"><a class="btn btn-ghost btn-sm" href="' + routeKembali + '" style="margin-bottom:8px">' + SVG_ICONS.arrowLeft + '<span>Kembali</span></a><h1 class="admin-halaman-judul">' + escapeHtml(judul) + '</h1><p class="admin-halaman-deskripsi">Modul ini akan segera tersedia.</p></div></div><div class="admin-placeholder"><div class="admin-placeholder-ikon">' + SVG_ICONS.info + '</div><h2>' + escapeHtml(judul) + '</h2><p>Halaman ini sedang dalam pengembangan.</p><div class="admin-placeholder-badge">SEGERA HADIR</div></div>';
+}
 function prosesLogout() { var tokenSaatIni = STATE.token; hapusSesi(); if (tokenSaatIni) { panggilApi('logout', { token: tokenSaatIni }, 'POST').then(function () {}); } tampilkanToast('Anda telah keluar dari akun.', 'info', 'Logout'); window.location.hash = '#/'; }
 
 var DAFTAR_HALAMAN = {
@@ -2298,11 +2360,11 @@ var DAFTAR_HALAMAN = {
   '#/guru/absensi': { judul: 'Absensi', render: function (w) { renderPlaceholderGuruWali(w, 'Absensi'); } },
   '#/guru/jadwal': { judul: 'Jadwal Pelajaran', render: function (w) { renderPlaceholderGuruWali(w, 'Jadwal Pelajaran'); } },
   '#/guru/nilai': { judul: 'Nilai', render: function (w) { renderPlaceholderGuruWali(w, 'Nilai'); } },
-  '#/guru/papan-info': { judul: 'Papan Info', render: function (w) { renderHalamanPapanInfo(w); } },
+  '#/guru/papan-info': { judul: 'Papan Info', render: renderHalamanPapanInfoReadOnly },
 
   // Route wali
   '#/wali': { judul: 'Dashboard Wali', render: renderDashboardWali },
-  '#/wali/papan-info': { judul: 'Papan Info', render: function (w) { renderHalamanPapanInfo(w); } }
+  '#/wali/papan-info': { judul: 'Papan Info', render: renderHalamanPapanInfoReadOnly }
 };
 
 function ambilHashSaatIni() { return window.location.hash || '#/'; }
@@ -2319,7 +2381,8 @@ function tanganiRute() {
   else if (hash.indexOf('#/admin/profil-santri/') === 0) { var idProfil = hash.replace('#/admin/profil-santri/', ''); ruteDinamis = { render: function (w) { renderHalamanProfilSantri(w, idProfil); }, judul: 'Profil Santri' }; }
   else if (hash.indexOf('#/admin/pengumuman/tambah') === 0) ruteDinamis = { render: function (w) { renderHalamanTambahPapanInfo(w); }, judul: 'Tambah Papan Info' };
   else if (hash.indexOf('#/admin/pengumuman/edit/') === 0) { var idEditPgm = hash.replace('#/admin/pengumuman/edit/', ''); ruteDinamis = { render: function (w) { renderHalamanEditPapanInfo(w, idEditPgm); }, judul: 'Edit Papan Info' }; }
-    else if (hash.indexOf('#/admin/pengumuman/lihat/') === 0) { var idLihatPgm = hash.replace('#/admin/pengumuman/lihat/', ''); ruteDinamis = { render: function (w) { renderHalamanDetailPapanInfo(w, idLihatPgm); }, judul: 'Detail Papan Info' }; }
+  else if (hash.indexOf('#/admin/pengumuman/lihat/') === 0) { var idLihatPgm = hash.replace('#/admin/pengumuman/lihat/', ''); ruteDinamis = { render: function (w) { renderHalamanDetailPapanInfo(w, idLihatPgm); }, judul: 'Detail Papan Info' }; }
+
   var halaman = ruteDinamis || DAFTAR_HALAMAN[hash];
   var semuaLink = document.querySelectorAll('[data-route]');
   for (var i = 0; i < semuaLink.length; i++) {
@@ -2328,29 +2391,14 @@ function tanganiRute() {
     else link.classList.remove('aktif');
   }
 
-  // Proteksi: harus login untuk semua route admin/guru/wali
   var butuhLogin = hash.indexOf('#/admin') === 0 || hash.indexOf('#/guru') === 0 || hash.indexOf('#/wali') === 0;
   if (butuhLogin && (!STATE.token || !STATE.pengguna)) { window.location.hash = '#/login'; return; }
 
-  // Proteksi: cek apakah role berhak akses route ini
   var role = ambilRoleSaatIni();
   if (butuhLogin && role) {
-    // Admin tidak boleh akses /guru atau /wali (kecuali untuk preview — skip dulu)
-    if (role !== 'admin' && routeKhususAdmin(hash)) {
-      // Guru/wali nyasar ke halaman admin → redirect ke dashboard-nya
-      redirectKeDashboard();
-      return;
-    }
-    // Guru tidak boleh akses /wali
-    if (role === 'guru' && routeKhususWali(hash)) {
-      redirectKeDashboard();
-      return;
-    }
-    // Wali tidak boleh akses /guru
-    if (role === 'wali' && routeKhususGuru(hash)) {
-      redirectKeDashboard();
-      return;
-    }
+    if (role !== 'admin' && routeKhususAdmin(hash)) { redirectKeDashboard(); return; }
+    if (role === 'guru' && routeKhususWali(hash)) { redirectKeDashboard(); return; }
+    if (role === 'wali' && routeKhususGuru(hash)) { redirectKeDashboard(); return; }
   }
 
   aturModeLayout();
@@ -2361,7 +2409,6 @@ function tanganiRute() {
     if (halaman && typeof halaman.render === 'function') halaman.render(wrapper);
     else renderHalamanAdminPlaceholder(wrapper, halaman ? halaman.judul : 'Halaman');
   }
-
   else if (halaman && typeof halaman.render === 'function') { wadah.style.marginTop = ''; wadah.innerHTML = '<div class="container"></div>'; halaman.render(wadah.querySelector('.container')); }
   else { wadah.style.marginTop = ''; var j = halaman ? halaman.judul : 'Halaman Tidak Ditemukan'; wadah.innerHTML = '<div class="container">' + renderPlaceholder(j) + '</div>'; }
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2421,167 +2468,15 @@ function inisialisasi() {
   pasangEventNavbar(); pasangEventAdmin(); pasangEventScrollNavbar();
   window.addEventListener('hashchange', tanganiRute);
   tanganiRute();
-
-  // Render sidebar setelah STATE.pengguna dimuat (kalau ada sesi)
   renderMenuSidebar();
-
-  // Muat pengaturan publik (warna, nama, logo, tahun ajaran) — tanpa token
   muatPengaturanPublik();
-
   if (STATE.token) {
     panggilApi('verifikasiToken', { token: STATE.token }, 'POST').then(function (respon) {
       if (!respon || !respon.sukses) { hapusSesi(); if (STATE.halamanAktif && STATE.halamanAktif.indexOf('#/admin') === 0) window.location.hash = '#/login'; }
-      else if (respon.data && respon.data.pengguna) { STATE.pengguna = respon.data.pengguna; try { localStorage.setItem(KONFIG.STORAGE_PENGGUNA, JSON.stringify(STATE.pengguna)); } catch (e) {} perbaruiNavbar(); }
+      else if (respon.data && respon.data.pengguna) { STATE.pengguna = respon.data.pengguna; try { localStorage.setItem(KONFIG.STORAGE_PENGGUNA, JSON.stringify(STATE.pengguna)); } catch (e) {} perbaruiNavbar(); renderMenuSidebar(); }
     });
   } else { panggilApi('ping', {}, 'GET').then(function (respon) { logDebug('Ping GAS:', respon); }); }
 }
 
-
-/* ============================================================
- * DASHBOARD GURU
- * ============================================================ */
-
-function renderDashboardGuru(wadah) {
-  if (!STATE.token || !STATE.pengguna) { window.location.hash = '#/login'; return; }
-  if (STATE.pengguna.role !== 'guru') { window.location.hash = ROUTE_DASHBOARD_BY_ROLE[STATE.pengguna.role] || '#/'; return; }
-
-  var namaLengkap = STATE.pengguna.nama_lengkap || STATE.pengguna.email || 'Ustadz';
-  var salam = ambilSalamWaktu();
-  var tanggal = ambilTanggalHariIni();
-
-  wadah.innerHTML = '' +
-    '<div class="admin-halaman-header">' +
-      '<div class="admin-halaman-judul-wrap">' +
-        '<h1 class="admin-halaman-judul">Dashboard Guru</h1>' +
-        '<p class="admin-halaman-deskripsi">Selamat datang di portal guru ELKAROM</p>' +
-      '</div>' +
-    '</div>' +
-    '<div class="dash-salam" style="background:linear-gradient(135deg,var(--warna-utama) 0%,var(--warna-utama-tua) 100%);color:white;border-radius:16px;padding:32px;margin-bottom:24px;position:relative;overflow:hidden">' +
-      '<div style="position:relative;z-index:1">' +
-        '<h1 style="font-size:24px;font-weight:800;color:white;margin-bottom:8px">' + escapeHtml(salam) + ', <span style="color:var(--warna-aksen)">' + escapeHtml(namaLengkap) + '</span></h1>' +
-        '<div style="font-size:14.5px;color:rgba(255,255,255,0.9);display:inline-flex;align-items:center;gap:8px">' + SVG_ICONS.calendar + '<span>' + escapeHtml(tanggal) + '</span></div>' +
-        '<div style="margin-top:12px;font-size:13.5px;color:rgba(255,255,255,0.85)">' + SVG_ICONS.graduation + ' <span>Anda login sebagai <strong>Guru</strong></span></div>' +
-      '</div>' +
-    '</div>' +
-    renderPapanInfoDashboard() +
-    '<div style="margin-bottom:24px">' +
-      '<div style="margin-bottom:16px"><h3 style="font-size:17px;font-weight:700">Aksi Cepat</h3></div>' +
-      '<div class="aksi-cepat-grid">' +
-        '<a class="aksi-cepat-item" href="#/guru/santri"><div class="aksi-cepat-icon">' + SVG_ICONS.users + '</div><span>Data Santri</span></a>' +
-        '<a class="aksi-cepat-item" href="#/guru/absensi"><div class="aksi-cepat-icon">' + SVG_ICONS.clipboard + '</div><span>Absensi</span></a>' +
-        '<a class="aksi-cepat-item" href="#/guru/nilai"><div class="aksi-cepat-icon">' + SVG_ICONS.trendingUp + '</div><span>Nilai</span></a>' +
-        '<a class="aksi-cepat-item" href="#/guru/jadwal"><div class="aksi-cepat-icon">' + SVG_ICONS.calendar + '</div><span>Jadwal</span></a>' +
-      '</div>' +
-    '</div>' +
-    '<div style="margin-bottom:24px">' +
-      '<div style="margin-bottom:16px"><h3 style="font-size:17px;font-weight:700">Statistik Santri</h3></div>' +
-      '<div class="stat-grid" id="guru-stat-grid">' +
-        '<div class="stat-card"><div class="stat-label">Total Santri</div><div class="stat-nilai" id="guru-stat-total"><span class="stat-loading"></span></div></div>' +
-        '<div class="stat-card stat-card-aksen"><div class="stat-label">Santri Aktif</div><div class="stat-nilai" id="guru-stat-aktif"><span class="stat-loading"></span></div></div>' +
-        '<div class="stat-card stat-card-abu"><div class="stat-label">Santri Putra</div><div class="stat-nilai" id="guru-stat-putra"><span class="stat-loading"></span></div></div>' +
-        '<div class="stat-card stat-card-merah"><div class="stat-label">Santri Putri</div><div class="stat-nilai" id="guru-stat-putri"><span class="stat-loading"></span></div></div>' +
-      '</div>' +
-    '</div>';
-
-  muatPapanInfoDashboard();
-
-  // Ambil statistik santri (read-only untuk guru)
-  panggilApi('statistikSiswa', {}, 'POST').then(function (respon) {
-    if (!respon || !respon.sukses || !respon.data) {
-      ['guru-stat-total','guru-stat-aktif','guru-stat-putra','guru-stat-putri'].forEach(function (id) {
-        var el = document.getElementById(id);
-        if (el) el.textContent = '-';
-      });
-      return;
-    }
-    var d = respon.data;
-    var map = {
-      'guru-stat-total': d.total || 0,
-      'guru-stat-aktif': d.aktif || 0,
-      'guru-stat-putra': d.putra || 0,
-      'guru-stat-putri': d.putri || 0
-    };
-    for (var k in map) {
-      if (map.hasOwnProperty(k)) {
-        var el = document.getElementById(k);
-        if (el) el.textContent = map[k];
-      }
-    }
-  });
-}
-
-/* ============================================================
- * DASHBOARD WALI
- * ============================================================ */
-
-function renderDashboardWali(wadah) {
-  if (!STATE.token || !STATE.pengguna) { window.location.hash = '#/login'; return; }
-  if (STATE.pengguna.role !== 'wali') { window.location.hash = ROUTE_DASHBOARD_BY_ROLE[STATE.pengguna.role] || '#/'; return; }
-
-  var namaLengkap = STATE.pengguna.nama_lengkap || STATE.pengguna.email || 'Bapak/Ibu';
-  var salam = ambilSalamWaktu();
-  var tanggal = ambilTanggalHariIni();
-
-  wadah.innerHTML = '' +
-    '<div class="admin-halaman-header">' +
-      '<div class="admin-halaman-judul-wrap">' +
-        '<h1 class="admin-halaman-judul">Dashboard Wali</h1>' +
-        '<p class="admin-halaman-deskripsi">Selamat datang di portal wali santri ELKAROM</p>' +
-      '</div>' +
-    '</div>' +
-    '<div class="dash-salam" style="background:linear-gradient(135deg,var(--warna-utama) 0%,var(--warna-utama-tua) 100%);color:white;border-radius:16px;padding:32px;margin-bottom:24px;position:relative;overflow:hidden">' +
-      '<div style="position:relative;z-index:1">' +
-        '<h1 style="font-size:24px;font-weight:800;color:white;margin-bottom:8px">' + escapeHtml(salam) + ', <span style="color:var(--warna-aksen)">' + escapeHtml(namaLengkap) + '</span></h1>' +
-        '<div style="font-size:14.5px;color:rgba(255,255,255,0.9);display:inline-flex;align-items:center;gap:8px">' + SVG_ICONS.calendar + '<span>' + escapeHtml(tanggal) + '</span></div>' +
-        '<div style="margin-top:12px;font-size:13.5px;color:rgba(255,255,255,0.85)">' + SVG_ICONS.users + ' <span>Anda login sebagai <strong>Wali Santri</strong></span></div>' +
-      '</div>' +
-    '</div>' +
-    renderPapanInfoDashboard() +
-    '<div class="form-card">' +
-      '<div class="form-card-judul">' + SVG_ICONS.users + '<span>Info Anak</span></div>' +
-      '<p class="teks-lembut" style="font-size:13.5px;line-height:1.7;margin:0">' +
-        'Fitur informasi detail santri (absensi, nilai, raport) akan tersedia setelah modul Data Wali dan Akademik dibangun. ' +
-        'Untuk saat ini, Anda bisa melihat papan informasi terbaru dari pesantren di atas.' +
-      '</p>' +
-    '</div>';
-
-  muatPapanInfoDashboard();
-}
-
-/* ============================================================
- * ROUTER UNTUK GURU/WALI
- * ============================================================ */
-
-/**
- * Render halaman placeholder guru/wali.
- */
-function renderPlaceholderGuruWali(wadah, judul) {
-  wadah.innerHTML = '' +
-    '<div class="admin-halaman-header">' +
-      '<div class="admin-halaman-judul-wrap">' +
-        '<h1 class="admin-halaman-judul">' + escapeHtml(judul) + '</h1>' +
-        '<p class="admin-halaman-deskripsi">Modul ini akan segera tersedia.</p>' +
-      '</div>' +
-    '</div>' +
-    '<div class="admin-placeholder">' +
-      '<div class="admin-placeholder-ikon">' + SVG_ICONS.info + '</div>' +
-      '<h2>' + escapeHtml(judul) + '</h2>' +
-      '<p>Halaman ini sedang dalam pengembangan.</p>' +
-      '<div class="admin-placeholder-badge">SEGERA HADIR</div>' +
-    '</div>';
-}
-
-/**
- * Halaman Data Santri versi guru (read-only).
- * Sementara reuse renderHalamanSantri, tapi tanpa tombol aksi.
- * Untuk versi lengkap, tunggu modul Data Guru.
- */
-function renderHalamanSantriGuru(wadah) {
-  // Reuse halaman santri admin, tapi guru tidak bisa tambah/edit/hapus
-  // Sederhana: pakai yang admin saja dulu
-  renderHalamanSantri(wadah);
-}
-
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', inisialisasi);
 else inisialisasi();
-
