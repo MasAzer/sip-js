@@ -121,7 +121,7 @@ var STATE = {
   grupPengaturanAktif: 'identitas',
   judulHalaman: '',
   loginGagal: 0,
-  loginTerkunciSampai: 0
+  loginTerkunciSampai: 0,
   daftarGuru: []
 };
 
